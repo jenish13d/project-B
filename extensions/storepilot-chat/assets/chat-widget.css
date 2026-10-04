@@ -1,0 +1,109 @@
+#storepilot-chat {
+  --storepilot-accent: #111;
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2147483000;
+  font-family: inherit;
+  font-size: 15px;
+}
+.storepilot-launcher {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--storepilot-accent);
+  color: #fff;
+  font-size: 26px;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.storepilot-panel {
+  position: absolute;
+  right: 0;
+  bottom: 70px;
+  width: min(360px, calc(100vw - 40px));
+  height: min(520px, calc(100vh - 120px));
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  color: #111;
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.storepilot-panel[hidden] {
+  display: none;
+}
+.storepilot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--storepilot-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.storepilot-close {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+.storepilot-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.storepilot-msg {
+  max-width: 85%;
+  padding: 8px 12px;
+  border-radius: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.storepilot-msg--assistant {
+  align-self: flex-start;
+  background: #f1f1f1;
+}
+.storepilot-msg--customer {
+  align-self: flex-end;
+  background: var(--storepilot-accent);
+  color: #fff;
+}
+.storepilot-msg--typing {
+  opacity: 0.6;
+  font-style: italic;
+}
+.storepilot-form {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid #eee;
+}
+.storepilot-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font: inherit;
+}
+.storepilot-send {
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--storepilot-accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.storepilot-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

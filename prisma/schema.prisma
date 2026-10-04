@@ -1,0 +1,75 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// One row per installed store: how that store's assistant should behave.
+// This is the "custom layer" each client gets on top of the shared core.
+model ShopSettings {
+  shop          String   @id
+  enabled       Boolean  @default(true)
+  storeName     String   @default("")
+  assistantName String   @default("Support Assistant")
+  tone          String   @default("friendly and concise")
+  policies      String   @default("")
+  faq           String   @default("")
+  extraRules    String   @default("")
+  handoffEmail  String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Conversation {
+  id            String        @id @default(cuid())
+  shop          String
+  customerEmail String?
+  handedOff     Boolean       @default(false)
+  handoffReason String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  messages      ChatMessage[]
+
+  @@index([shop, createdAt])
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // "customer" or "assistant"
+  role           String
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}

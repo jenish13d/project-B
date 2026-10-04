@@ -1,0 +1,36 @@
+<div
+  id="storepilot-chat"
+  data-endpoint="/apps/storepilot/chat"
+  data-title="{{ block.settings.title | escape }}"
+  data-greeting="{{ block.settings.greeting | escape }}"
+  style="--storepilot-accent: {{ block.settings.accent_color }};"
+></div>
+{{ 'chat-widget.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'chat-widget.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "StorePilot chat",
+  "target": "body",
+  "settings": [
+    {
+      "type": "text",
+      "id": "title",
+      "label": "Chat window title",
+      "default": "Questions? Ask us"
+    },
+    {
+      "type": "text",
+      "id": "greeting",
+      "label": "First message",
+      "default": "Hi! I can help with orders, shipping, returns and products. What do you need?"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent color",
+      "default": "#111111"
+    }
+  ]
+}
+{% endschema %}
