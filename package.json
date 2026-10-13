@@ -18,7 +18,8 @@
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
     "typecheck": "react-router typegen && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "fill-form": "node tools/form-filler/cli.ts"
   },
   "type": "module",
   "engines": {
