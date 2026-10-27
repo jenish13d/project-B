@@ -1,35 +1,59 @@
 package com.blecky.assistant.voice
 
+import org.json.JSONObject
+
 /**
  * "Blecky" isn't in the offline speech model's dictionary, so the wake grammar listens for the
  * closest words it does know ("bleck", "blackie", "becky", "black").
  */
 object WakeWord {
-    private val GREETING = "(hey|hi|okay|ok|yo)"
-    private val NAME = "(bleck|blackie|becky|black)"
-    private val WITH_GREETING = Regex("\\b$GREETING $NAME\\b")
-
-    // Said on its own, "Bleck" (often heard as "black") also wakes Blecky.
+    private const val GREETING = "(hey|hi|okay|ok|yo)"
+    private val WITH_GREETING = Regex("\\b$GREETING (bleck|blackie|black)\\b")
     private val NAME_ALONE = Regex("^(bleck|blackie|black)$")
+    private val NAME_WORDS = setOf("bleck", "blackie", "black")
 
-    /** Vosk grammar: only these phrases (or unknown speech) can be recognised while waiting. */
-    val GRAMMAR = """["hey bleck", "hey blackie", "hey becky", "hey black", "hi bleck", "hi blackie",
-        "okay bleck", "okay blackie", "yo bleck", "bleck", "blackie", "black", "[unk]"]"""
+    /** How sure the recognizer must be that it heard her name. */
+    private const val MIN_NAME_CONFIDENCE = 0.5
+    private const val MIN_ALONE_CONFIDENCE = 0.75
 
     /**
-     * Whether [heard] is a wake phrase. A lone name only counts on a final result, so it isn't
-     * mistaken for the start of a longer sentence.
+     * Vosk grammar: only these phrases (or unknown speech) can be recognised while waiting.
+     * "hey becky" never wakes Blecky; it's a decoy that soaks up "hey buddy" and "hey baby".
      */
-    fun matches(heard: String?, isFinal: Boolean = true): Boolean {
-        val raw = heard?.lowercase()?.trim() ?: return false
-        if (WITH_GREETING.containsMatchIn(clean(raw))) return true
-        // Background noise before the name is fine; more speech after it means a sentence.
-        val alone = raw.replace(Regex("^(\\[unk]\\s*)+"), "")
-        return isFinal && "[unk]" !in alone && NAME_ALONE.matches(clean(alone))
+    val GRAMMAR = """["hey bleck", "hey blackie", "hey black", "hi bleck", "hi blackie", "okay bleck",
+        "okay blackie", "yo bleck", "hey becky", "bleck", "blackie", "black", "[unk]"]"""
+
+    data class Word(val word: String, val confidence: Double)
+
+    /** Reads the words and confidences out of a Vosk final result. */
+    fun words(result: JSONObject): List<Word> {
+        val array = result.optJSONArray("result") ?: return result.optString("text").split(' ')
+            .filter { it.isNotBlank() }.map { Word(it, 1.0) }
+        return (0 until array.length()).map { array.getJSONObject(it) }.map { Word(it.optString("word"), it.optDouble("conf", 0.0)) }
     }
 
+    /**
+     * Whether a finished phrase is a confident wake phrase. "Bleck" on its own only counts when
+     * [allowNameAlone] is on, because short sounds get mistaken for it.
+     */
+    fun matches(words: List<Word>, allowNameAlone: Boolean): Boolean {
+        val text = clean(words.joinToString(" ") { it.word })
+        val nameConfidence = words.filter { it.word in NAME_WORDS }.maxOfOrNull { it.confidence } ?: 0.0
+        if (WITH_GREETING.containsMatchIn(text)) return nameConfidence >= MIN_NAME_CONFIDENCE
+        if (!allowNameAlone) return false
+        // Noise before the name is fine; more speech after it means a sentence.
+        val alone = words.dropWhile { it.word == "[unk]" }
+        return alone.none { it.word == "[unk]" } &&
+            NAME_ALONE.matches(clean(alone.joinToString(" ") { it.word })) &&
+            nameConfidence >= MIN_ALONE_CONFIDENCE
+    }
+
+    /** Convenience for plain text (every word fully confident). */
+    fun matches(heard: String?, allowNameAlone: Boolean = true): Boolean =
+        matches(heard?.lowercase()?.split(' ')?.filter { it.isNotBlank() }?.map { Word(it, 1.0) } ?: emptyList(), allowNameAlone)
+
     private fun clean(text: String) =
-        text.replace("[unk]", " ").replace(Regex("[^a-z ]"), " ").replace(Regex(" +"), " ").trim()
+        text.lowercase().replace("[unk]", " ").replace(Regex("[^a-z ]"), " ").replace(Regex(" +"), " ").trim()
 
     private val YES = Regex("\\b(yes|yeah|yep|yup|sure|ok|okay|send|send it|call|do it|go ahead|confirm|correct|please)\\b")
     private val NO = Regex("\\b(no|nope|don't|do not|cancel|stop|wait|never mind|nevermind)\\b")
@@ -39,9 +63,18 @@ object WakeWord {
         return YES.containsMatchIn(text) && !NO.containsMatchIn(text)
     }
 
-    private val GOODBYE = Regex("^(stop|bye|goodbye|bye bye|thanks|thank you|thanks blecky|that's all|that is all|never mind|nevermind|nothing)[.! ]*$")
+    private val GOODBYE_START = Regex(
+        "^(thanks|thank you|thank u|thx|bye|goodbye|ok bye|okay bye|good night|see you|that's all|that is all|" +
+            "that's it|never mind|nevermind|cool thanks|धन्यवाद|शुक्रिया|थैंक्स|थैंक यू|बाय|આભાર|ધન્યવાદ|બાય)(\\s|$)",
+    )
+    private val GOODBYE_EXACT = Regex("^(stop|nothing|no thanks|बस|बस ठीक है|बस इतना ही|ठीक है बाय|બસ|બસ આભાર|ચાલો બાય)$")
 
-    fun isGoodbye(heard: String): Boolean = GOODBYE.matches(heard.lowercase().trim())
+    /** "Thanks", "ok bye", "धन्यवाद", "આભાર": a short sign-off ends the conversation; "thanks, now call mom" doesn't. */
+    fun isGoodbye(heard: String): Boolean {
+        val text = heard.lowercase().replace(Regex("[.,!?।]"), " ").replace(Regex("\\s+"), " ").trim()
+        if (text.split(' ').size > 5) return false
+        return GOODBYE_START.containsMatchIn(text) || GOODBYE_EXACT.matches(text)
+    }
 
     private val GREETINGS = listOf(
         "Yes, %s?", "I'm here.", "Go on, %s.", "Hey %s, what's up?", "Mm-hm?", "Listening.",

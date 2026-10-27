@@ -5,9 +5,12 @@ import android.content.Context
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("blecky", Context.MODE_PRIVATE)
 
-    /** Which AI runs Blecky's brain: "gemini" and "groq" are free, "claude" needs Anthropic credit. */
+    /**
+     * Which AI runs Blecky's brain: "auto" combines every free provider that has a key, or one of
+     * "gemini", "groq", "cerebras", "openrouter" (all free), or "claude" (needs Anthropic credit).
+     */
     var provider: String
-        get() = prefs.getString("provider", PROVIDER_GEMINI) ?: PROVIDER_GEMINI
+        get() = prefs.getString("provider", PROVIDER_AUTO) ?: PROVIDER_AUTO
         set(value) = prefs.edit().putString("provider", value).apply()
 
     /** Anthropic (Claude) API key. */
@@ -24,18 +27,27 @@ class Settings(context: Context) {
         if (provider == PROVIDER_CLAUDE) apiKey = key else prefs.edit().putString("key_$provider", key.trim()).apply()
     }
 
-    /** Key for the provider in use. */
-    val activeKey: String get() = keyFor(provider)
+    /** Key for the provider in use; in auto mode, any free key. */
+    val activeKey: String
+        get() = if (provider == PROVIDER_AUTO) FREE_PROVIDERS.map(::keyFor).firstOrNull { it.isNotBlank() } ?: "" else keyFor(provider)
 
     /** Model picked automatically for a free provider (their model names change often). */
     fun modelFor(provider: String): String = prefs.getString("model_$provider", "") ?: ""
 
     fun setModelFor(provider: String, model: String) = prefs.edit().putString("model_$provider", model).apply()
 
-    /** Language for speech recognition; Indian English by default in India, which also copes with Hinglish. */
-    val speechLanguage: String
-        get() = prefs.getString("speech_language", null)
-            ?: if (java.util.Locale.getDefault().country == "IN") "en-IN" else java.util.Locale.getDefault().toLanguageTag()
+    /** What the user speaks: "mix" (English, Hindi and Gujarati), or just "en", "hi" or "gu". */
+    var speechMode: String
+        get() = prefs.getString("speech_mode", "mix") ?: "mix"
+        set(value) = prefs.edit().putString("speech_mode", value).apply()
+
+    /** Main language for speech recognition, then the others it may also hear. */
+    fun recognitionLanguages(): Pair<String, List<String>> = when (speechMode) {
+        "hi" -> "hi-IN" to listOf("en-IN")
+        "gu" -> "gu-IN" to listOf("en-IN")
+        "en" -> "en-IN" to emptyList()
+        else -> "en-IN" to listOf("hi-IN", "gu-IN")
+    }
 
     var model: String
         get() = prefs.getString("model", DEFAULT_MODEL) ?: DEFAULT_MODEL
@@ -81,6 +93,11 @@ class Settings(context: Context) {
         get() = prefs.getInt("check_in_minute", 9 * 60)
         set(value) = prefs.edit().putInt("check_in_minute", value).apply()
 
+    /** Also wake on "Bleck" said on its own. Off by default: short sounds get mistaken for it. */
+    var wakeOnNameAlone: Boolean
+        get() = prefs.getBoolean("wake_name_alone", false)
+        set(value) = prefs.edit().putBoolean("wake_name_alone", value).apply()
+
     /** Chosen offline neural voice (see NeuralVoices.PACKS). */
     var voicePack: String
         get() = prefs.getString("voice_pack", "jenny") ?: "jenny"
@@ -105,6 +122,10 @@ class Settings(context: Context) {
         const val PROVIDER_GEMINI = "gemini"
         const val PROVIDER_GROQ = "groq"
         const val PROVIDER_CLAUDE = "claude"
+        const val PROVIDER_CEREBRAS = "cerebras"
+        const val PROVIDER_OPENROUTER = "openrouter"
+        const val PROVIDER_AUTO = "auto"
+        val FREE_PROVIDERS = listOf(PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS, PROVIDER_OPENROUTER)
         const val DEFAULT_VOICE_THRESHOLD = 0.45f
     }
 }

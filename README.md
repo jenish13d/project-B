@@ -5,8 +5,13 @@ quick, warm, a little witty, and on your side. Say **"Hey Blecky"** or just **"B
 ("Yes, Jai?") and you ask for something. It works with the screen on or off, as long as listening is
 switched on. With the voice lock on, she only wakes for your voice.
 
-**Everything is free.** Her brain runs on Google Gemini's or Groq's free tier: you need a free key,
-but no card. Her voice is a free open-source neural voice from GitHub that runs offline on the phone.
+She understands **English, Hindi and Gujarati**, mixed too, and answers in the same language: Hindi with
+an offline Hindi voice, Gujarati with Google's free voice.
+
+**Everything is free.** Her brain combines several free AIs: Google Gemini, Groq, Cerebras and
+OpenRouter's open models (Gemma, Nemotron and others). Add a free key (no card) for any of them. In
+**Auto** mode she uses them as one brain, and when one hits its free limit the next one takes over
+mid-conversation. Her voice is a free open-source neural voice from GitHub that runs offline on the phone.
 Web search and weather use free public sources. Claude stays available as a paid option.
 
 She talks with a **natural human voice**: Piper (fast enough for budget phones like the Redmi 13C) or
@@ -38,8 +43,11 @@ Blecky can:
 
 - A foreground service keeps the microphone open and listens with a small **offline** speech model (Vosk),
   so nothing you say leaves the phone until you have said the wake word.
-- "Blecky" isn't in that model's dictionary, so the app listens for "Hey Bleck", "Hey Blackie" and
-  "Hey Becky", or "Bleck" said on its own followed by a pause. Wait for her reply before you ask.
+- "Blecky" isn't in that model's dictionary, so the app listens for "Hey Blecky" or "Hey Bleck" (also
+  "Hi" or "Okay" plus her name). She wakes only when the recognizer is confident it heard her name,
+  and she ignores the mic for two seconds after she finishes talking, so she doesn't hear her own echo.
+  "Bleck" said on its own is off by default because short sounds get mistaken for it; turn it on in
+  Settings if you want it. Wait for her reply before you ask.
 - **Voice lock:** in Settings, tap *Teach Blecky my voice* and say "Hey Blecky" five times. From then on,
   each wake phrase is compared with your voiceprint, on the phone. If she ignores you, set *Voice match*
   to relaxed. If she wakes for other people, set it to strict. The button shows how well your last try matched.
@@ -55,11 +63,13 @@ Blecky can:
 
 1. Install Android Studio, open this folder and press **Run**. Or build from the command line with
    `./gradlew assembleDebug` and install `app/build/outputs/apk/debug/app-debug.apk`. It needs Android 11 or newer.
-2. Get a **free** AI key and paste it under **Settings → Brain**:
-   - **Google Gemini** (default): sign in at <https://aistudio.google.com/apikey> with a Google account and
-     tap *Create API key*. No card needed, and the free limits are plenty for one person.
-   - **Groq** (faster, tighter free limits): <https://console.groq.com/keys>.
-   - Tap the Brain button to switch between them, or to Claude if you have Anthropic credit.
+2. Get at least one **free** AI key and paste it under **Settings → Brain** (tap *Add a key for* to choose
+   which one). None of them needs a card:
+   - **Google Gemini**, the best start and great at Hindi and Gujarati: <https://aistudio.google.com/apikey>.
+   - **Groq**, very fast: <https://console.groq.com/keys>.
+   - **Cerebras**, fast: <https://cloud.cerebras.ai>.
+   - **OpenRouter**, free open models, 50 requests a day: <https://openrouter.ai/keys>.
+   - The more keys you add, the less often she hits a free limit. Leave the Brain on **Auto**.
 3. Tap steps 1 to 4 in the app to grant access:
    1. Microphone, calls, texts, contacts and calendar.
    2. **Display over other apps**. Without it, Android won't let Blecky open apps or calls while it runs in the background.
@@ -76,6 +86,15 @@ Blecky can:
 6. Optional, under **Settings**: teach her your voice and turn on the voice lock, try other voices
    (she starts on a friendly female English voice, and the choice depends on the voices your phone
    has installed), set or turn off the daily check-in, and see or clear what she remembers.
+
+## Languages
+
+Under **Settings → Listening → I speak**, choose English, Hindi and Gujarati (the default), or just
+one of them. On Android 14 and later the recognizer can switch languages mid-sentence. If it keeps
+mishearing you, pick the one language you're using. For spoken replies:
+
+- **Hindi**: download *Priyamvada, Hindi* from **Settings → Voice** (free, offline).
+- **Gujarati**: tap **Set up the Gujarati voice**. It uses Google's free speech engine.
 
 ## Xiaomi / Redmi / POCO phones
 
@@ -127,6 +146,7 @@ Run the unit tests with `./gradlew testDebugUnitTest`.
 - [Open-Meteo](https://open-meteo.com) for weather, and Google News RSS and the Wikipedia API for search.
 - [Anthropic Java SDK](https://github.com/anthropics/anthropic-sdk-java): Claude, Blecky's brain.
 
+Builds are signed with `app/blecky-debug.keystore`, so a new APK always installs over the old one.
 The sherpa-onnx library is downloaded from its GitHub release, and its checksum verified, on the first build.
 
 ## Privacy

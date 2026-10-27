@@ -44,6 +44,9 @@ class WakeWordService : Service() {
     private var session: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // Right after Blecky stops talking, ignore the mic briefly so she doesn't hear her own echo.
+    private var ignoreUntil = 0L
+
     private val voiceChannel = object : UserChannel {
         override suspend fun confirm(question: String): Boolean {
             ConversationLog.blecky(question)
@@ -69,15 +72,15 @@ class WakeWordService : Service() {
         }
 
         private fun check(hypothesis: String?, isFinal: Boolean) {
+            // Only finished phrases carry word confidences (and voiceprints), so ignore partials.
+            if (!isFinal || System.currentTimeMillis() < ignoreUntil) return
             val result = hypothesis?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
-            if (!WakeWord.matches(result.optString(if (isFinal) "text" else "partial"), isFinal)) return
+            if (!WakeWord.matches(WakeWord.words(result), blecky.settings.wakeOnNameAlone)) return
             val owner = ownerVoice
             if (owner == null) {
                 startSession()
                 return
             }
-            // The voiceprint only comes with the final result, so wait for it.
-            if (!isFinal) return
             val score = SpeakerProfile.fromResult(result)?.let { SpeakerProfile.similarity(it, owner) } ?: 0f
             blecky.settings.lastVoiceScore = score
             if (score >= blecky.settings.voiceThreshold) startSession() else Log.i(TAG, "Wake phrase from another voice ($score)")
@@ -142,6 +145,7 @@ class WakeWordService : Service() {
             val rec = withContext(Dispatchers.IO) {
                 runCatching {
                     Recognizer(ModelInstaller.speech(this@WakeWordService), SAMPLE_RATE, WakeWord.GRAMMAR).apply {
+                        setWords(true)
                         if (owner != null) setSpeakerModel(ModelInstaller.speaker(this@WakeWordService))
                     }
                 }.onFailure { Log.e(TAG, "Could not load wake word models", it) }.getOrNull()
@@ -251,7 +255,15 @@ class WakeWordService : Service() {
     }
 
     private fun resumeOrStop() {
-        if (blecky.settings.listening) startWakeListener() else stopSelf()
+        if (!blecky.settings.listening) {
+            stopSelf()
+            return
+        }
+        ignoreUntil = System.currentTimeMillis() + ECHO_GUARD_MS
+        scope.launch {
+            delay(ECHO_GUARD_MS / 2)
+            startWakeListener()
+        }
     }
 
     private fun showOnScreen() {
@@ -285,6 +297,7 @@ class WakeWordService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val RESTART_NOTIFICATION_ID = 2
         private const val SAMPLE_RATE = 16000f
+        private const val ECHO_GUARD_MS = 2_000L
         private const val ACTION_LISTEN = "listen"
         private const val ACTION_TALK = "talk"
         private const val ACTION_SAY = "say"

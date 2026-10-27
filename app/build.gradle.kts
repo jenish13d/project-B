@@ -30,13 +30,27 @@ android {
         applicationId = "com.blecky.assistant"
         minSdk = 30
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 6
+        versionName = "6.0"
 
         ndk {
             // 64-bit ARM covers every phone from the last several years and keeps the APK small.
             abiFilters += listOf("arm64-v8a")
         }
+    }
+
+    signingConfigs {
+        // A fixed debug key, so every build installs as an update over the last one.
+        getByName("debug") {
+            storeFile = file("blecky-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

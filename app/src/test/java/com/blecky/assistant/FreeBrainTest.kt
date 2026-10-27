@@ -4,6 +4,7 @@ import com.blecky.assistant.brain.FreeProvider
 import com.blecky.assistant.brain.OpenAiEngine
 import com.blecky.assistant.brain.Persona
 import com.blecky.assistant.tools.WebParse
+import com.blecky.assistant.voice.SpeechText
 import com.blecky.assistant.tools.allTools
 import org.json.JSONArray
 import org.json.JSONObject
@@ -83,5 +84,41 @@ class FreeBrainTest {
     fun `messages carry the time and mark scheduler prompts`() {
         assertTrue(Persona.userMessage("hi", fromScheduler = false).matches(Regex("^\\[.+] hi$")))
         assertTrue(Persona.userMessage("check in", fromScheduler = true).contains("Not the user speaking"))
+    }
+
+    @Test
+    fun `gemini keeps its own extra fields, other brains get plain messages`() {
+        val fromGemini = JSONObject()
+            .put("role", "assistant").put("content", JSONObject.NULL).put("_by", "gemini")
+            .put("tool_calls", JSONArray().put(
+                JSONObject().put("id", "c1").put("type", "function")
+                    .put("function", JSONObject().put("name", "call").put("arguments", "{\"contact\":\"Jash\"}"))
+                    .put("extra_content", JSONObject().put("google", JSONObject().put("thought_signature", "sig"))),
+            ))
+        val toGemini = OpenAiEngine.forProvider(fromGemini, FreeProvider.GEMINI)
+        assertTrue(toGemini.toString().contains("thought_signature"))
+        assertFalse(toGemini.has("_by"))
+        val toGroq = OpenAiEngine.forProvider(fromGemini, FreeProvider.GROQ)
+        assertFalse(toGroq.toString().contains("thought_signature"))
+        assertEquals("call", toGroq.getJSONArray("tool_calls").getJSONObject(0).getJSONObject("function").getString("name"))
+        val reasoning = JSONObject().put("role", "assistant").put("content", "hi").put("reasoning", "...").put("_by", "groq")
+        assertFalse(OpenAiEngine.forProvider(reasoning, FreeProvider.GROQ).has("reasoning"))
+        val user = JSONObject().put("role", "user").put("content", "hi")
+        assertEquals("hi", OpenAiEngine.forProvider(user, FreeProvider.CEREBRAS).getString("content"))
+    }
+
+    @Test
+    fun `openrouter picks a strong free model`() {
+        val ids = listOf("liquid/lfm-2.5-2.6b:free", "google/gemma-4-26b-a4b-it:free", "cohere/north-mini-code:free")
+        assertEquals("google/gemma-4-26b-a4b-it:free", OpenAiEngine.pickModel(FreeProvider.OPENROUTER, ids))
+        assertEquals("google/gemma-4-31b-it:free", OpenAiEngine.pickModel(FreeProvider.OPENROUTER, ids + "google/gemma-4-31b-it:free"))
+    }
+
+    @Test
+    fun `replies are voiced by script`() {
+        assertEquals(SpeechText.Script.GUJARATI, SpeechText.script("કેમ છો Jai? બધું બરાબર?"))
+        assertEquals(SpeechText.Script.DEVANAGARI, SpeechText.script("अरे जय, कैसे हो?"))
+        assertEquals(SpeechText.Script.LATIN, SpeechText.script("Arre Jai, kaise ho? Sab theek?"))
+        assertEquals(SpeechText.Script.LATIN, SpeechText.script("Calling Jayesh now."))
     }
 }

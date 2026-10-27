@@ -32,7 +32,13 @@
             android:id="@+id/provider"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Brain: Google Gemini (free)" />
+            android:text="Brain: Auto (all free AIs together)" />
+
+        <Button
+            android:id="@+id/key_for"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add a key for: Google Gemini" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -64,6 +70,18 @@
         <TextView style="@style/HudSection" android:text="LISTENING" />
 
         <Button
+            android:id="@+id/speech_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="I speak: English, Hindi and Gujarati" />
+
+        <Button
+            android:id="@+id/name_alone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Also wake on just “Bleck”: off" />
+
+        <Button
             android:id="@+id/toggle_listening"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -88,6 +106,12 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Try another voice" />
+
+        <Button
+            android:id="@+id/gujarati_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Set up the Gujarati voice" />
 
         <TextView
             style="@style/HudNote"

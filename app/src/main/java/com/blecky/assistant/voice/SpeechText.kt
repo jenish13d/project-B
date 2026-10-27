@@ -7,6 +7,27 @@ object SpeechText {
     private val BULLET = Regex("(?m)^\\s*([-•]|\\d+\\.)\\s+")
     private val SPACES = Regex("\\s+")
 
+    enum class Script { LATIN, DEVANAGARI, GUJARATI }
+
+    /** Which writing system most of the letters use, to pick a voice that can read it. */
+    fun script(text: String): Script {
+        var devanagari = 0
+        var gujarati = 0
+        var latin = 0
+        text.forEach { c ->
+            when (c) {
+                in '\u0900'..'\u097F' -> devanagari++
+                in '\u0A80'..'\u0AFF' -> gujarati++
+                in 'a'..'z', in 'A'..'Z' -> latin++
+            }
+        }
+        return when {
+            gujarati > 0 && gujarati >= devanagari && gujarati * 2 >= latin -> Script.GUJARATI
+            devanagari > 0 && devanagari * 2 >= latin -> Script.DEVANAGARI
+            else -> Script.LATIN
+        }
+    }
+
     fun clean(text: String): String {
         val noEmoji = buildString {
             var i = 0

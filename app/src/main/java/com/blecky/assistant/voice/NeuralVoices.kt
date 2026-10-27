@@ -30,6 +30,7 @@ class NeuralVoices(private val context: Context) {
         val kind: Kind,
         val sizeMb: Int,
         val speakerId: Int = 0,
+        val language: String = "en",
     ) {
         val url get() = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$folder.tar.bz2"
     }
@@ -171,6 +172,7 @@ class NeuralVoices(private val context: Context) {
             Pack("bella", "Bella, premium (needs a fast phone)", KOKORO, Kind.KOKORO, 103, speakerId = 1),
             Pack("sky", "Sky, premium (needs a fast phone)", KOKORO, Kind.KOKORO, 103, speakerId = 4),
             Pack("emma", "Emma, British premium (needs a fast phone)", KOKORO, Kind.KOKORO, 103, speakerId = 7),
+            Pack("priyamvada", "Priyamvada, Hindi (fast)", "vits-piper-hi_IN-priyamvada-medium", Kind.PIPER, 67, language = "hi"),
         )
     }
 }

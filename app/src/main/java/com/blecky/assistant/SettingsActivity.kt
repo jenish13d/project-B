@@ -33,6 +33,7 @@ class SettingsActivity : Activity() {
     private val scope = MainScope()
     private lateinit var status: TextView
     private var busy = false
+    private var keyProvider = Prefs.PROVIDER_GEMINI
     private var enrollment: VoiceEnrollment? = null
 
     private fun button(id: Int): Button = findViewById(id)
@@ -45,20 +46,36 @@ class SettingsActivity : Activity() {
 
         val keyField = findViewById<EditText>(R.id.api_key)
         button(R.id.provider).setOnClickListener {
-            val order = PROVIDERS.map { it.first }
+            val order = BRAINS.map { it.first }
             settings.provider = order[(order.indexOf(settings.provider) + 1) % order.size]
+            if (settings.provider != Prefs.PROVIDER_AUTO) keyProvider = settings.provider
             blecky.brain.reset()
+            refresh()
+        }
+        button(R.id.key_for).setOnClickListener {
+            val order = KEYS.map { it.first }
+            keyProvider = order[(order.indexOf(keyProvider) + 1) % order.size]
             refresh()
         }
         button(R.id.save_key).setOnClickListener {
             if (keyField.text.isNotBlank()) {
-                settings.setKeyFor(settings.provider, keyField.text.toString())
+                settings.setKeyFor(keyProvider, keyField.text.toString())
                 keyField.text.clear()
                 blecky.brain.reset()
                 toast("Key saved")
                 refresh()
             }
         }
+        button(R.id.speech_mode).setOnClickListener {
+            val order = SPEECH.map { it.first }
+            settings.speechMode = order[(order.indexOf(settings.speechMode) + 1) % order.size]
+            refresh()
+        }
+        button(R.id.name_alone).setOnClickListener {
+            settings.wakeOnNameAlone = !settings.wakeOnNameAlone
+            refresh()
+        }
+        button(R.id.gujarati_voice).setOnClickListener { setUpGujaratiVoice() }
         val elevenField = findViewById<EditText>(R.id.eleven_key)
         button(R.id.save_eleven).setOnClickListener {
             settings.elevenLabsKey = elevenField.text.toString()
@@ -336,18 +353,23 @@ class SettingsActivity : Activity() {
         }
         val listening = WakeWordService.isRunning && settings.listening
         status.text = buildString {
+            append("Blecky v${BuildConfig.VERSION_NAME}\n")
             append(if (listening) "Listening. Say “Hey Blecky” or “Bleck”, even with the screen off." else "Not listening right now.")
-            val key = settings.activeKey
-            append("\nAI key: ${if (key.isBlank()) "not set" else "saved (…${key.takeLast(4)})"}")
+            append("\nBrain: ${if (settings.activeKey.isBlank()) "needs a free key (see Brain below)" else "ready"}")
             if (missing.isNotEmpty()) append("\nStill to set up: ${missing.joinToString()}.")
         }
         button(R.id.toggle_listening).text = if (listening) "Stop listening" else "Start listening for “Hey Blecky”"
         button(R.id.follow_up).text = "Keep the conversation going: " +
             (FOLLOW_UP.firstOrNull { it.first == settings.followUpSeconds }?.second ?: "${settings.followUpSeconds} seconds")
-        val provider = PROVIDERS.firstOrNull { it.first == settings.provider } ?: PROVIDERS.first()
-        button(R.id.provider).text = "Brain: ${provider.second} (tap to change)"
-        findViewById<EditText>(R.id.api_key).hint = "${provider.second} key"
-        findViewById<TextView>(R.id.provider_note).text = provider.third
+        val brain = BRAINS.firstOrNull { it.first == settings.provider } ?: BRAINS.first()
+        button(R.id.provider).text = "Brain: ${brain.second} (tap to change)"
+        val keyInfo = KEYS.first { it.first == keyProvider }
+        button(R.id.key_for).text = "Add a key for: ${keyInfo.second} (tap to change)"
+        findViewById<EditText>(R.id.api_key).hint = "${keyInfo.second} key"
+        val saved = KEYS.filter { settings.keyFor(it.first).isNotBlank() }.joinToString { it.second }.ifEmpty { "none yet" }
+        findViewById<TextView>(R.id.provider_note).text = "${keyInfo.third}\nKeys saved: $saved."
+        button(R.id.speech_mode).text = "I speak: " + (SPEECH.firstOrNull { it.first == settings.speechMode }?.second ?: SPEECH.first().second)
+        button(R.id.name_alone).text = "Also wake on just “Bleck”: " + if (settings.wakeOnNameAlone) "on" else "off (fewer accidental wakes)"
         button(R.id.natural_voice).text = blecky.voice.neuralPack()?.let { "Natural voice: ${it.label} (tap for more)" }
             ?: "Download a natural human voice (free, about 67 MB)"
         button(R.id.change_voice).text = "Try another voice (now: ${blecky.voice.currentVoiceName()})"
@@ -368,6 +390,33 @@ class SettingsActivity : Activity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
+    /** Gujarati is read by Google's free speech engine; send the user to install or pick it. */
+    private fun setUpGujaratiVoice() {
+        scope.launch {
+            if (blecky.voice.hasGujaratiVoice()) {
+                toast("Gujarati voice is ready")
+                blecky.voice.speak("નમસ્તે! હું બ્લેકી છું. કેમ છો?")
+                return@launch
+            }
+            AlertDialog.Builder(this@SettingsActivity)
+                .setTitle("Gujarati voice")
+                .setMessage(
+                    "Your phone's speech engine can't read Gujarati yet. It's free to fix:\n\n" +
+                        "1. Install or update “Speech Services by Google” from the Play Store.\n" +
+                        "2. In the screen that opens next, pick it as the preferred engine.\n" +
+                        "3. Tap its gear, then Install voice data, then Gujarati (India).",
+                )
+                .setPositiveButton("Open voice settings") { _, _ ->
+                    openFirst(Intent("com.android.settings.TTS_SETTINGS"))
+                }
+                .setNeutralButton("Play Store") { _, _ ->
+                    openFirst(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.tts")))
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+    }
+
     private fun isXiaomi() = Build.MANUFACTURER.lowercase() in setOf("xiaomi", "redmi", "poco")
 
     /** Opens the first of [intents] this phone understands, else Blecky's app info page. */
@@ -380,22 +429,38 @@ class SettingsActivity : Activity() {
 
     companion object {
         private val STRICTNESS = listOf("relaxed" to 0.35f, "normal" to 0.45f, "strict" to 0.55f)
-        private val PROVIDERS = listOf(
+        private val BRAINS = listOf(
+            Prefs.PROVIDER_AUTO to "Auto, all free AIs together",
+            Prefs.PROVIDER_GEMINI to "Google Gemini only (free)",
+            Prefs.PROVIDER_GROQ to "Groq only (free)",
+            Prefs.PROVIDER_CEREBRAS to "Cerebras only (free)",
+            Prefs.PROVIDER_OPENROUTER to "OpenRouter only (free)",
+            Prefs.PROVIDER_CLAUDE to "Claude (paid)",
+        )
+        private val KEYS = listOf(
             Triple(
-                Prefs.PROVIDER_GEMINI,
-                "Google Gemini (free)",
-                "Free, no card needed: sign in at aistudio.google.com/apikey with your Google account, tap Create API key, and paste it here.",
+                Prefs.PROVIDER_GEMINI, "Google Gemini",
+                "Best free brain, great at Hindi and Gujarati. Sign in at aistudio.google.com/apikey with your Google account, tap Create API key, paste it here. No card.",
             ),
             Triple(
-                Prefs.PROVIDER_GROQ,
-                "Groq (free, very fast)",
-                "Free, no card needed: sign up at console.groq.com/keys, create a key and paste it here. Its free limits are tighter than Gemini's.",
+                Prefs.PROVIDER_GROQ, "Groq",
+                "Free and very fast. Sign up at console.groq.com/keys, create a key, paste it here. No card.",
             ),
             Triple(
-                Prefs.PROVIDER_CLAUDE,
-                "Claude (paid)",
-                "Needs an Anthropic API key with credit (console.anthropic.com, under Billing).",
+                Prefs.PROVIDER_CEREBRAS, "Cerebras",
+                "Free and fast. Sign up at cloud.cerebras.ai, open API Keys, paste it here. No card.",
             ),
+            Triple(
+                Prefs.PROVIDER_OPENROUTER, "OpenRouter",
+                "Free open models (Gemma, Nemotron and more, 50 requests a day). Sign up at openrouter.ai/keys. No card.",
+            ),
+            Triple(Prefs.PROVIDER_CLAUDE, "Claude (paid)", "Only if you have Anthropic credit (console.anthropic.com)."),
+        )
+        private val SPEECH = listOf(
+            "mix" to "English, Hindi and Gujarati",
+            "en" to "English only",
+            "hi" to "Hindi (and English)",
+            "gu" to "Gujarati (and English)",
         )
         private val FOLLOW_UP = listOf(20 to "20 seconds", 45 to "45 seconds", 120 to "2 minutes", 600 to "until I say bye")
     }

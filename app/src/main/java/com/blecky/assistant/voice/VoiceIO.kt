@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +21,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
@@ -70,10 +72,27 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         tts.setSpeechRate(1.03f)
     }
 
+    /** Tells the recognizer which languages to expect; Android 14+ can switch between them mid-sentence. */
+    private fun addLanguages(intent: Intent) {
+        val (primary, others) = settings.recognitionLanguages()
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, primary)
+        if (others.isEmpty()) return
+        // Understood by Google's recognizer on older Android versions.
+        intent.putExtra("android.speech.extra.EXTRA_ADDITIONAL_LANGUAGES", others.toTypedArray())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val all = ArrayList(listOf(primary) + others)
+            intent.putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_DETECTION, true)
+            intent.putStringArrayListExtra(RecognizerIntent.EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES, all)
+            intent.putExtra(RecognizerIntent.EXTRA_ENABLE_LANGUAGE_SWITCH, RecognizerIntent.LANGUAGE_SWITCH_BALANCED)
+            intent.putStringArrayListExtra(RecognizerIntent.EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES, all)
+        }
+    }
+
     /** The chosen offline voice if it's downloaded, otherwise any downloaded one. */
     fun neuralPack(): NeuralVoices.Pack? {
         val chosen = neural.pack(settings.voicePack)
-        return if (neural.isInstalled(chosen)) chosen else neural.installed().firstOrNull()
+        return if (neural.isInstalled(chosen) && chosen.language == "en") chosen
+        else neural.installed().firstOrNull { it.language == "en" }
     }
 
     /** The voice Blecky speaks with now, for the settings screen. */
@@ -85,7 +104,7 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
 
     /** Switches to the next voice of the current engine and returns its name. */
     suspend fun nextVoice(): String? {
-        val installed = neural.installed()
+        val installed = neural.installed().filter { it.language == "en" }
         if (installed.isNotEmpty()) {
             val index = installed.indexOfFirst { it.id == settings.voicePack }
             val next = installed[(index + 1) % installed.size]
@@ -114,11 +133,30 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         VoiceState.mode = VoiceState.Mode.SPEAKING
         try {
             withContext(Dispatchers.IO) {
-                if (settings.elevenLabsKey.isNotBlank() && tryVoice { elevenLabs.speak(settings.elevenLabsKey, settings.elevenLabsVoice, spoken) }) return@withContext
+                val script = SpeechText.script(spoken)
+                // ElevenLabs reads English and Hindi; Gujarati goes to the phone's Google voice.
+                if (script != SpeechText.Script.GUJARATI && settings.elevenLabsKey.isNotBlank() &&
+                    tryVoice { elevenLabs.speak(settings.elevenLabsKey, settings.elevenLabsVoice, spoken) }
+                ) {
+                    return@withContext
+                }
                 if (interrupted) return@withContext
-                val pack = neuralPack()
+                val pack = when (script) {
+                    SpeechText.Script.LATIN -> neuralPack()
+                    SpeechText.Script.DEVANAGARI -> neural.installed().firstOrNull { it.language == "hi" }
+                    SpeechText.Script.GUJARATI -> null
+                }
                 if (pack != null && tryVoice { neural.speak(spoken, pack) }) return@withContext
-                if (!interrupted) speakWithPhoneVoice(spoken)
+                if (!interrupted) {
+                    speakWithPhoneVoice(
+                        spoken,
+                        when (script) {
+                            SpeechText.Script.DEVANAGARI -> Locale("hi", "IN")
+                            SpeechText.Script.GUJARATI -> Locale("gu", "IN")
+                            SpeechText.Script.LATIN -> null
+                        },
+                    )
+                }
             }
         } finally {
             VoiceState.level = 0f
@@ -134,14 +172,28 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         false
     }
 
-    private suspend fun speakWithPhoneVoice(text: String) {
+    /** The phone's own text-to-speech, in [locale] when the reply isn't English. */
+    private suspend fun speakWithPhoneVoice(text: String, locale: Locale? = null) {
         if (!ttsReady.await()) return
-        val id = UUID.randomUUID().toString()
-        val done = CompletableDeferred<Unit>()
-        pending[id] = done
-        tts.speak(text, TextToSpeech.QUEUE_ADD, null, id)
-        done.await()
+        if (locale != null) {
+            val available = tts.isLanguageAvailable(locale)
+            if (available < TextToSpeech.LANG_AVAILABLE) Log.w("Blecky", "Phone voice has no $locale (status $available)")
+            tts.language = locale
+        }
+        try {
+            val id = UUID.randomUUID().toString()
+            val done = CompletableDeferred<Unit>()
+            pending[id] = done
+            tts.speak(text, TextToSpeech.QUEUE_ADD, null, id)
+            done.await()
+        } finally {
+            if (locale != null) applyVoice()
+        }
     }
+
+    /** Whether the phone's speech engine can read Gujarati (Google's speech engine can). */
+    suspend fun hasGujaratiVoice(): Boolean =
+        ttsReady.await() && tts.isLanguageAvailable(Locale("gu", "IN")) >= TextToSpeech.LANG_AVAILABLE
 
     fun stopSpeaking() {
         interrupted = true
@@ -200,7 +252,7 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
-                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, settings.speechLanguage)
+                    .apply { addLanguages(this) }
                     .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L),
             )
         }
