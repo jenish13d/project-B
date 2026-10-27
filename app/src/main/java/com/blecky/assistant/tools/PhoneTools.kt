@@ -1,6 +1,7 @@
 package com.blecky.assistant.tools
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,8 @@ import android.os.BatteryManager
 import android.provider.AlarmClock
 import android.provider.ContactsContract
 import android.provider.Settings
+import android.telecom.PhoneAccountHandle
+import android.telecom.TelecomManager
 import android.telephony.SmsManager
 
 fun phoneTools(): List<BleckyTool> = listOf(
@@ -48,7 +51,101 @@ internal fun Context.findContacts(query: String, email: Boolean = false): List<C
     }
     val all = found.values.toList()
     // Prefer exact name matches ("Mom" over "Mom's office").
-    return all.filter { it.name.equals(query, ignoreCase = true) }.ifEmpty { all }
+    if (all.isNotEmpty()) return all.filter { it.name.equals(query, ignoreCase = true) }.ifEmpty { all }
+
+    // Nothing contains the words, so the recognizer may have misheard the name ("jash" for "Jayesh").
+    val everyone = mutableListOf<Contact>()
+    contentResolver.query(uri, arrayOf(nameCol, valueCol), null, null, null)?.use { c ->
+        while (c.moveToNext()) {
+            val name = c.getString(0) ?: continue
+            everyone += Contact(name, c.getString(1) ?: continue)
+        }
+    }
+    return closestContacts(query, everyone)
+}
+
+/** Contacts whose names sound like [query], best first; a clear winner is returned alone. */
+internal fun closestContacts(query: String, contacts: List<Contact>): List<Contact> {
+    val scored = contacts.map { it to NameMatch.score(query, it.name) }
+        .filter { it.second >= 0.6 }
+        .sortedByDescending { it.second }
+    if (scored.isEmpty()) return emptyList()
+    val best = scored.first()
+    val runnerUp = scored.firstOrNull { it.first.name != best.first.name }
+    return if (runnerUp == null || best.second - runnerUp.second >= 0.1) {
+        listOf(best.first)
+    } else {
+        scored.map { it.first }.distinctBy { it.name }.take(5)
+    }
+}
+
+/** Fuzzy name matching that copes with speech-recognition spellings. */
+internal object NameMatch {
+    fun score(query: String, name: String): Double {
+        val q = clean(query)
+        val n = clean(name)
+        if (q.isEmpty() || n.isEmpty()) return 0.0
+        val words = n.split(' ')
+        val spelling = (listOf(n) + words).maxOf { similarity(q, it) }
+        val sound = if (words.any { skeleton(it) == skeleton(q) && skeleton(q).length >= 2 }) 0.85 else 0.0
+        return maxOf(spelling, sound)
+    }
+
+    private fun clean(s: String) = s.lowercase().replace(Regex("[^a-z ]"), "").replace(Regex(" +"), " ").trim()
+
+    /** First letter plus the consonants that carry the sound: "jayesh" and "jash" both become "js". */
+    private fun skeleton(word: String): String {
+        if (word.isEmpty()) return ""
+        val rest = word.drop(1).filter { it !in "aeiouyhw" }
+        return (word.first() + rest).fold("") { acc, c -> if (acc.lastOrNull() == c) acc else acc + c }
+    }
+
+    private fun similarity(a: String, b: String): Double {
+        val longest = maxOf(a.length, b.length)
+        return if (longest == 0) 1.0 else 1.0 - levenshtein(a, b).toDouble() / longest
+    }
+
+    private fun levenshtein(a: String, b: String): Int {
+        var previous = IntArray(b.length + 1) { it }
+        for (i in 1..a.length) {
+            val current = IntArray(b.length + 1)
+            current[0] = i
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                current[j] = minOf(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+            }
+            previous = current
+        }
+        return previous[b.length]
+    }
+}
+
+/** Picks the SIM the user named ("Jio", "Airtel", "SIM 2", "second") from the phone's SIM labels. */
+internal fun pickSim(labels: List<String>, wanted: String): Int? {
+    val w = wanted.lowercase().trim()
+    labels.indexOfFirst { label ->
+        val l = label.lowercase()
+        val brand = l.split(' ').first()
+        l.isNotBlank() && (l.contains(w) || (brand !in setOf("sim", "card") && w.contains(brand)))
+    }.takeIf { it >= 0 }?.let { return it }
+    val position = Regex("\\d").find(w)?.value?.toIntOrNull()
+        ?: when {
+            "first" in w -> 1
+            "second" in w -> 2
+            else -> null
+        }
+    return position?.minus(1)?.takeIf { it in labels.indices }
+}
+
+@SuppressLint("MissingPermission") // checked by requirePermission below
+internal fun Context.simAccount(wanted: String?): Pair<PhoneAccountHandle, String>? {
+    if (wanted == null) return null
+    requirePermission(Manifest.permission.READ_PHONE_STATE, "choose which SIM to call from")
+    val telecom = getSystemService(TelecomManager::class.java)
+    val accounts = telecom.callCapablePhoneAccounts.map { it to (telecom.getPhoneAccount(it)?.label?.toString() ?: "") }
+    val index = pickSim(accounts.map { it.second }, wanted)
+        ?: throw ToolError("There's no SIM called '$wanted'. This phone has: ${accounts.joinToString { it.second.ifBlank { "unnamed SIM" } }}.")
+    return accounts[index].first to accounts[index].second
 }
 
 internal fun looksLikeNumber(text: String) = text.count { it.isDigit() } >= 3 && text.all { it.isDigit() || it in "+-() ." }
@@ -84,14 +181,21 @@ object OpenApp : BleckyTool(
 }
 
 object CallContact : BleckyTool(
-    "call", "Phone call a contact by name, or a phone number.",
-    listOf(Param("contact", "string", "Contact name or phone number")),
+    "call", "Phone call a contact by name, or a phone number. Names can be misheard, so the closest match is used.",
+    listOf(
+        Param("contact", "string", "Contact name or phone number"),
+        Param("sim", "string", "Which SIM to call from, if the user said, e.g. 'Jio', 'Airtel', 'SIM 2'", required = false),
+    ),
 ) {
     override suspend fun run(args: Args, ctx: ToolContext): String {
         ctx.context.requirePermission(Manifest.permission.CALL_PHONE, "make phone calls")
         val contact = ctx.context.resolvePhone(args.string("contact"))
-        if (!ctx.user.confirm("Call ${contact.name}?")) return "The user cancelled; no call was made."
-        return ctx.context.launch(Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(contact.value)}")), "Calling ${contact.name}.")
+        val sim = ctx.context.simAccount(args.optString("sim"))
+        val via = sim?.let { " on ${it.second}" } ?: ""
+        if (!ctx.user.confirm("Call ${contact.name}$via?")) return "The user cancelled; no call was made."
+        val intent = Intent(Intent.ACTION_CALL, Uri.parse("tel:${Uri.encode(contact.value)}"))
+        sim?.let { intent.putExtra(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, it.first) }
+        return ctx.context.launch(intent, "Calling ${contact.name}$via.")
     }
 }
 

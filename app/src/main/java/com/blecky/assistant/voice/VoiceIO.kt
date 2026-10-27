@@ -14,6 +14,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import android.util.Log
 import com.blecky.assistant.Settings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,11 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     private val ttsReady = CompletableDeferred<Boolean>()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
     private lateinit var tts: TextToSpeech
+    val kokoro = KokoroVoice(context)
+    private val elevenLabs = ElevenLabsVoice()
+
+    @Volatile
+    private var interrupted = false
 
     init {
         tts = TextToSpeech(context.applicationContext) { status ->
@@ -64,8 +70,22 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         tts.setSpeechRate(1.03f)
     }
 
-    /** Switches to the next installed English voice and returns its name. */
+    /** The voice Blecky speaks with now, for the settings screen. */
+    fun currentVoiceName(): String = when {
+        settings.elevenLabsKey.isNotBlank() -> "ElevenLabs (cloud)"
+        kokoro.isInstalled() -> "Natural: " + (KokoroVoice.VOICES.firstOrNull { it.first == settings.kokoroVoice }?.second ?: "Bella")
+        else -> "Phone voice (basic)"
+    }
+
+    /** Switches to the next voice of the current engine and returns its name. */
     suspend fun nextVoice(): String? {
+        if (kokoro.isInstalled()) {
+            val voices = KokoroVoice.VOICES
+            val index = voices.indexOfFirst { it.first == settings.kokoroVoice }
+            val next = voices[(index + 1) % voices.size]
+            settings.kokoroVoice = next.first
+            return next.second
+        }
         if (!ttsReady.await()) return null
         val voices = englishVoices()
         if (voices.isEmpty()) return null
@@ -76,9 +96,39 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         return next.name
     }
 
-    /** Speaks [text] and returns once it has finished. */
+    /**
+     * Speaks [text] and returns once it has finished. Uses the most natural voice available:
+     * ElevenLabs if the user added a key, then the offline Kokoro voice, then the phone's own.
+     */
     suspend fun speak(text: String) {
-        if (text.isBlank() || !ttsReady.await()) return
+        val spoken = SpeechText.clean(text)
+        if (spoken.isEmpty()) return
+        interrupted = false
+        val previous = VoiceState.mode
+        VoiceState.mode = VoiceState.Mode.SPEAKING
+        try {
+            withContext(Dispatchers.IO) {
+                if (settings.elevenLabsKey.isNotBlank() && tryVoice { elevenLabs.speak(settings.elevenLabsKey, settings.elevenLabsVoice, spoken) }) return@withContext
+                if (interrupted) return@withContext
+                if (kokoro.isInstalled() && tryVoice { kokoro.speak(spoken, settings.kokoroVoice) }) return@withContext
+                if (!interrupted) speakWithPhoneVoice(spoken)
+            }
+        } finally {
+            VoiceState.level = 0f
+            if (VoiceState.mode == VoiceState.Mode.SPEAKING) VoiceState.mode = previous
+        }
+    }
+
+    private inline fun tryVoice(block: () -> Unit): Boolean = try {
+        block()
+        true
+    } catch (e: Exception) {
+        Log.w("Blecky", "Voice failed, falling back", e)
+        false
+    }
+
+    private suspend fun speakWithPhoneVoice(text: String) {
+        if (!ttsReady.await()) return
         val id = UUID.randomUUID().toString()
         val done = CompletableDeferred<Unit>()
         pending[id] = done
@@ -87,6 +137,9 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     }
 
     fun stopSpeaking() {
+        interrupted = true
+        elevenLabs.stop()
+        kokoro.stop()
         tts.stop()
     }
 
@@ -101,6 +154,17 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     /** Listens for one phrase. Returns null on silence or if nothing was understood. */
     suspend fun listen(): String? = withContext(Dispatchers.Main) {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) return@withContext null
+        val previous = VoiceState.mode
+        VoiceState.mode = VoiceState.Mode.LISTENING
+        try {
+            hear()
+        } finally {
+            VoiceState.level = 0f
+            if (VoiceState.mode == VoiceState.Mode.LISTENING) VoiceState.mode = previous
+        }
+    }
+
+    private suspend fun hear(): String? =
         suspendCancellableCoroutine { cont ->
             val recognizer = SpeechRecognizer.createSpeechRecognizer(context)
             var finished = false
@@ -116,7 +180,9 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
                 override fun onError(error: Int) = finish(null)
                 override fun onReadyForSpeech(params: Bundle?) = Unit
                 override fun onBeginningOfSpeech() = Unit
-                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onRmsChanged(rmsdB: Float) {
+                    VoiceState.level = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+                }
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
                 override fun onEndOfSpeech() = Unit
                 override fun onPartialResults(partialResults: Bundle?) = Unit
@@ -130,7 +196,6 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
                     .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L),
             )
         }
-    }
 }
 
 /**

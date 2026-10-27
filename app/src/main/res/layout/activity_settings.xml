@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/hud_background"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:letterSpacing="0.3"
+            android:text="SETTINGS"
+            android:textColor="@color/hud_cyan"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/status"
+            style="@style/HudNote"
+            android:textColor="@color/hud_text"
+            android:textSize="14sp" />
+
+        <TextView style="@style/HudSection" android:text="BRAIN" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/api_key"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Anthropic API key (sk-ant-…)"
+                android:importantForAutofill="no"
+                android:inputType="textPassword" />
+
+            <Button
+                android:id="@+id/save_key"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="0dp"
+                android:text="Save" />
+        </LinearLayout>
+
+        <TextView
+            style="@style/HudNote"
+            android:text="Get one at console.anthropic.com. The account needs credit under Billing, or Blecky gets error 400." />
+
+        <TextView style="@style/HudSection" android:text="LISTENING" />
+
+        <Button
+            android:id="@+id/toggle_listening"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Start listening for “Hey Blecky”" />
+
+        <Button
+            android:id="@+id/follow_up"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Keep the conversation going: 45 seconds" />
+
+        <TextView style="@style/HudSection" android:text="VOICE" />
+
+        <Button
+            android:id="@+id/natural_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Download natural human voice (100 MB)" />
+
+        <Button
+            android:id="@+id/change_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Try another voice" />
+
+        <TextView
+            style="@style/HudNote"
+            android:text="Optional, most lifelike: paste an ElevenLabs API key (elevenlabs.io, has a free tier). Leave empty to use the offline voice." />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/eleven_key"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="ElevenLabs API key"
+                android:importantForAutofill="no"
+                android:inputType="textPassword" />
+
+            <Button
+                android:id="@+id/save_eleven"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="0dp"
+                android:text="Save" />
+        </LinearLayout>
+
+        <TextView style="@style/HudSection" android:text="PERMISSIONS" />
+
+        <Button
+            android:id="@+id/grant_permissions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1. Allow microphone, calls, SIMs, texts, contacts, calendar" />
+
+        <Button
+            android:id="@+id/grant_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="2. Allow Blecky to open apps from the background" />
+
+        <Button
+            android:id="@+id/grant_battery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="3. Let Blecky run in the background (battery)" />
+
+        <Button
+            android:id="@+id/grant_notifications"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="4. Let Blecky read notifications (emails, messages)" />
+
+        <TextView style="@style/HudSection" android:text="MAKE BLECKY YOURS" />
+
+        <Button
+            android:id="@+id/enroll_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Teach Blecky my voice" />
+
+        <Button
+            android:id="@+id/voice_lock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Only wake for my voice: off" />
+
+        <Button
+            android:id="@+id/voice_strictness"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Voice match: normal" />
+
+        <Button
+            android:id="@+id/check_in_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Daily check-in: 09:00" />
+
+        <Button
+            android:id="@+id/memories"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="What Blecky remembers about me" />
+    </LinearLayout>
+</ScrollView>

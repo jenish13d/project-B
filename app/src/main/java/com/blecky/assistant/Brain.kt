@@ -1,14 +1,17 @@
 package com.blecky.assistant
 
 import android.content.Context
+import android.util.Log
 import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
 import com.anthropic.errors.AnthropicIoException
 import com.anthropic.errors.AnthropicServiceException
+import com.anthropic.errors.BadRequestException
 import com.anthropic.errors.RateLimitException
 import com.anthropic.errors.UnauthorizedException
 import com.anthropic.models.beta.messages.BetaContentBlockParam
+import com.anthropic.models.beta.messages.BetaMessage
 import com.anthropic.models.beta.messages.BetaMessageParam
 import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
@@ -39,7 +42,7 @@ class Brain(
 ) {
     private val toolsByName = tools.associateBy { it.name }
     private val toolUnions: List<BetaToolUnion> by lazy {
-        tools.map { BetaToolUnion.ofBetaTool(it.toBetaTool()) } +
+        tools.map { BetaToolUnion.ofBetaTool(toBetaTool(it)) } +
             BetaToolUnion.ofWebSearchTool20260209(BetaWebSearchTool20260209.builder().maxUses(3L).build())
     }
 
@@ -51,6 +54,7 @@ class Brain(
     private var system = SYSTEM_PROMPT
     private val lock = Mutex()
 
+    private var useFallbacks = true
     private var client: AnthropicClient? = null
     private var clientKey: String? = null
 
@@ -89,17 +93,7 @@ class Brain(
         history += BetaMessageParam.ofUser("[$stamp] $text")
 
         repeat(MAX_STEPS) {
-            val params = MessageCreateParams.builder()
-                .model(settings.model)
-                .maxTokens(16000L)
-                .system(system)
-                .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
-                .addBeta("server-side-fallback-2026-07-01")
-                .fallbacksDefault()
-                .tools(toolUnions)
-                .messages(history.toList())
-                .build()
-            val response = client.beta().messages().create(params)
+            val response = send(client)
             history += response.toParam()
 
             when (response.stopReason().orElse(null)) {
@@ -124,6 +118,18 @@ class Brain(
             }
         }
         return "That took too many steps, so I stopped. Could you try asking in a simpler way?"
+    }
+
+    private fun send(client: AnthropicClient): BetaMessage {
+        fun params() = requestParams(settings.model, system, toolUnions, history.toList(), useFallbacks)
+        return try {
+            client.beta().messages().create(params())
+        } catch (e: BadRequestException) {
+            // If the account can't use refusal fallbacks, carry on without them.
+            if (!useFallbacks || !apiMessage(e).contains("fallback", ignoreCase = true)) throw e
+            useFallbacks = false
+            client.beta().messages().create(params())
+        }
     }
 
     private suspend fun runTool(call: BetaToolUseBlock, ctx: ToolContext): BetaToolResultBlockParam {
@@ -151,30 +157,66 @@ class Brain(
         }
     }
 
-    private fun describe(e: Exception): String = when (e) {
-        is UnauthorizedException -> "My API key isn't working. Please check it in the Blecky app."
-        is RateLimitException -> "I'm being rate limited right now. Try again in a minute."
-        is AnthropicServiceException -> "Something went wrong on the server (error ${e.statusCode()})."
-        is AnthropicIoException -> "I can't reach the internet right now."
-        else -> "Something went wrong: ${e.message ?: e.javaClass.simpleName}"
-    }
-
-    private fun BleckyTool.toBetaTool(): BetaTool {
-        val properties = BetaTool.InputSchema.Properties.builder()
-        params.forEach { properties.putAdditionalProperty(it.name, JsonValue.from(it.schema())) }
-        return BetaTool.builder()
-            .name(name)
-            .description(description)
-            .inputSchema(
-                BetaTool.InputSchema.builder()
-                    .properties(properties.build())
-                    .required(params.filter { it.required }.map { it.name })
-                    .build(),
-            )
-            .build()
+    private fun describe(e: Exception): String {
+        Log.w("Blecky", "Request failed", e)
+        return when (e) {
+            is UnauthorizedException -> "My Anthropic API key isn't working. Please check it in Settings."
+            is RateLimitException -> "I'm being rate limited right now. Give me a minute and try again."
+            is AnthropicServiceException -> explainServerError(e.statusCode(), apiMessage(e))
+            is AnthropicIoException -> "I can't reach Anthropic right now (${e.cause?.message ?: e.message}). Check your internet."
+            else -> "Something went wrong: ${e.message ?: e.javaClass.simpleName}"
+        }
     }
 
     companion object {
+        /** The request Blecky sends each step; kept here so tests can check its shape. */
+        internal fun requestParams(
+            model: String,
+            system: String,
+            tools: List<BetaToolUnion>,
+            history: List<BetaMessageParam>,
+            fallbacks: Boolean,
+        ): MessageCreateParams = MessageCreateParams.builder()
+            .model(model)
+            .maxTokens(16000L)
+            .system(system)
+            .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
+            .apply { if (fallbacks) addBeta("server-side-fallback-2026-07-01").fallbacksDefault() }
+            .tools(tools)
+            .messages(history)
+            .build()
+
+        internal fun toBetaTool(tool: BleckyTool): BetaTool {
+            val properties = BetaTool.InputSchema.Properties.builder()
+            tool.params.forEach { properties.putAdditionalProperty(it.name, JsonValue.from(it.schema())) }
+            val schema = BetaTool.InputSchema.builder().properties(properties.build())
+            val required = tool.params.filter { it.required }.map { it.name }
+            if (required.isNotEmpty()) schema.required(required)
+            return BetaTool.builder()
+                .name(tool.name)
+                .description(tool.description)
+                .inputSchema(schema.build())
+                .build()
+        }
+
+        /** The human-readable message inside an API error body, if there is one. */
+        internal fun apiMessage(e: AnthropicServiceException): String = runCatching {
+            @Suppress("UNCHECKED_CAST")
+            val body = e.body().convert(Map::class.java) as Map<String, Any?>
+            (body["error"] as? Map<*, *>)?.get("message") as? String
+        }.getOrNull() ?: e.message ?: ""
+
+        /** What to tell the user when Anthropic rejects a request. */
+        internal fun explainServerError(status: Int, message: String): String = when {
+            message.contains("credit balance", ignoreCase = true) ->
+                "Your Anthropic account is out of credit. Add some at console.anthropic.com under Billing, and I'll be right back."
+            status == 404 || (message.contains("model", ignoreCase = true) && message.contains("not", ignoreCase = true)) ->
+                "That model isn't available on your Anthropic account. Anthropic said: $message"
+            status == 403 -> "Anthropic didn't allow that request: $message"
+            status == 529 || status >= 500 -> "Anthropic's servers are busy right now. Try again in a moment."
+            else -> "Anthropic rejected that request (error $status): ${message.ifBlank { "no details" }}"
+        }
+
         private const val MAX_STEPS = 12
         private const val MAX_HISTORY = 80
         private const val IDLE_RESET_MS = 20 * 60 * 1000L
@@ -189,6 +231,12 @@ class Brain(
             The user usually talks to you by voice and your replies are read aloud, so: reply in one to
             three short, natural spoken sentences; no markdown, lists, emojis, or URLs; say things the way
             a person would say them.
+
+            Sound like a real person talking, not a bot reading a script: use contractions, a natural
+            rhythm and small human reactions ("Oh nice!", "Hmm, let me check.", "Got it."), match the
+            user's energy and mood, and be genuinely warm and fun to talk to. Never say "as an AI". If the
+            user mixes Hindi and English (Hinglish) or uses another language, reply the same way, written
+            in English letters so your voice can read it.
 
             Be interactive and take the initiative, like a real assistant would:
             - Anticipate the next step and offer it ("Want me to remind you an hour before?").

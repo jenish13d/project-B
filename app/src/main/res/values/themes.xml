@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Blecky" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/hud_background</item>
+        <item name="android:statusBarColor">@color/hud_background</item>
+        <item name="android:navigationBarColor">@color/hud_background</item>
+        <item name="android:colorAccent">@color/hud_cyan</item>
+        <item name="android:textColorPrimary">@color/hud_text</item>
+        <item name="android:textColorSecondary">@color/hud_muted</item>
+        <item name="android:buttonStyle">@style/HudButton</item>
+        <item name="android:editTextStyle">@style/HudInput</item>
+    </style>
+
+    <style name="HudButton" parent="@android:style/Widget.DeviceDefault.Button.Borderless">
+        <item name="android:background">@drawable/bg_hud_button</item>
+        <item name="android:textColor">@color/hud_cyan</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+        <item name="android:layout_marginTop">6dp</item>
+    </style>
+
+    <style name="HudInput" parent="@android:style/Widget.DeviceDefault.EditText">
+        <item name="android:background">@drawable/bg_hud_input</item>
+        <item name="android:textColor">@color/hud_text</item>
+        <item name="android:textColorHint">@color/hud_muted</item>
+        <item name="android:minHeight">48dp</item>
+        <item name="android:paddingStart">16dp</item>
+        <item name="android:paddingEnd">16dp</item>
+    </style>
+
+    <style name="HudSection">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">20dp</item>
+        <item name="android:paddingBottom">4dp</item>
+        <item name="android:textColor">@color/hud_cyan</item>
+        <item name="android:letterSpacing">0.2</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+
+    <style name="HudNote">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:paddingTop">4dp</item>
+        <item name="android:textColor">@color/hud_muted</item>
+        <item name="android:textSize">13sp</item>
+    </style>
+</resources>

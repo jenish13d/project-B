@@ -53,6 +53,25 @@ class Settings(context: Context) {
         get() = prefs.getInt("check_in_minute", 9 * 60)
         set(value) = prefs.edit().putInt("check_in_minute", value).apply()
 
+    /** Kokoro speaker id; 1 is "Bella". */
+    var kokoroVoice: Int
+        get() = prefs.getInt("kokoro_voice", 1)
+        set(value) = prefs.edit().putInt("kokoro_voice", value).apply()
+
+    /** Optional ElevenLabs key for the most lifelike cloud voice. */
+    var elevenLabsKey: String
+        get() = prefs.getString("eleven_key", "") ?: ""
+        set(value) = prefs.edit().putString("eleven_key", value.trim()).apply()
+
+    var elevenLabsVoice: String
+        get() = prefs.getString("eleven_voice", "") ?: ""
+        set(value) = prefs.edit().putString("eleven_voice", value.trim()).apply()
+
+    /** How long Blecky keeps listening for a follow-up before going back to waiting for her name. */
+    var followUpSeconds: Int
+        get() = prefs.getInt("follow_up_seconds", 45)
+        set(value) = prefs.edit().putInt("follow_up_seconds", value).apply()
+
     companion object {
         const val DEFAULT_MODEL = "claude-opus-5-5"
         const val DEFAULT_VOICE_THRESHOLD = 0.45f

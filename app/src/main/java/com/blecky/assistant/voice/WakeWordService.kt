@@ -116,6 +116,7 @@ class WakeWordService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        VoiceState.mode = VoiceState.Mode.OFF
         scope.cancel()
         blecky.voice.stopSpeaking()
         stopWakeListener()
@@ -157,6 +158,7 @@ class WakeWordService : Service() {
             ownerVoice = owner
             recognizer = rec
             speech = SpeechService(rec, SAMPLE_RATE).also { it.startListening(wakeListener) }
+            VoiceState.mode = VoiceState.Mode.WAITING
             // Held only while waiting for the wake word, so the CPU keeps processing audio with the screen off.
             wakeLock = getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "blecky:wake")
@@ -186,15 +188,26 @@ class WakeWordService : Service() {
         session = scope.launch {
             try {
                 if (showScreen) showOnScreen()
-                val opener = if (checkIn != null) {
-                    blecky.brain.ask(checkIn, voiceChannel, fromScheduler = true)
-                } else {
+                val opener = if (checkIn != null) think { blecky.brain.ask(checkIn, voiceChannel, fromScheduler = true) } else {
                     WakeWord.greeting(blecky.settings.userName)
                 }
                 ConversationLog.blecky(opener)
                 blecky.voice.speak(opener)
+                // Keep the conversation open: no need to say her name again until it goes quiet.
+                var quietSince = System.currentTimeMillis()
+                var instantFailures = 0
                 while (isActive) {
-                    val heard = blecky.voice.listen() ?: break
+                    val started = System.currentTimeMillis()
+                    val heard = blecky.voice.listen()
+                    if (heard == null) {
+                        // The recognizer can fail instantly (busy, offline); don't spin on it.
+                        instantFailures = if (System.currentTimeMillis() - started < 1_000) instantFailures + 1 else 0
+                        if (instantFailures >= 3) break
+                        if (System.currentTimeMillis() - quietSince > blecky.settings.followUpSeconds * 1000L) break
+                        delay(250)
+                        continue
+                    }
+                    instantFailures = 0
                     ConversationLog.user(heard)
                     if (WakeWord.isGoodbye(heard)) {
                         val bye = listOf("Anytime.", "Okay, I'm here if you need me.", "Talk soon.").random()
@@ -202,14 +215,24 @@ class WakeWordService : Service() {
                         blecky.voice.speak(bye)
                         break
                     }
-                    val reply = blecky.brain.ask(heard, voiceChannel)
+                    val reply = think { blecky.brain.ask(heard, voiceChannel) }
                     ConversationLog.blecky(reply)
                     blecky.voice.speak(reply)
+                    quietSince = System.currentTimeMillis()
                 }
             } finally {
                 session = null
                 resumeOrStop()
             }
+        }
+    }
+
+    private inline fun <T> think(block: () -> T): T {
+        VoiceState.mode = VoiceState.Mode.THINKING
+        return try {
+            block()
+        } finally {
+            VoiceState.mode = VoiceState.Mode.WAITING
         }
     }
 
