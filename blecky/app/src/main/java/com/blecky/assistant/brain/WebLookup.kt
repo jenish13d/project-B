@@ -56,11 +56,12 @@ object WebLookup {
 
     fun query(text: String): String = text.replace(FILLER, "").replace(Regex("[?!.]+$"), "").trim().ifEmpty { text }
 
-    fun isOnline(context: Context): Boolean {
+    /** Whether the phone has a network. If Android won't say, assume yes and let the request decide. */
+    fun isOnline(context: Context): Boolean = runCatching {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
         val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    }
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }.getOrDefault(true)
 
     /** Fresh facts for [text], or null if it doesn't need any or the lookup fails. */
     suspend fun lookup(text: String, ctx: ToolContext): String? {

@@ -1,17 +1,18 @@
 package com.blecky.assistant
 
 import android.content.Context
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
+import android.util.Log
 import com.blecky.assistant.brain.ClaudeEngine
 import com.blecky.assistant.brain.FreeProvider
 import com.blecky.assistant.brain.LocalCommands
 import com.blecky.assistant.brain.OfflineEngine
 import com.blecky.assistant.brain.OpenAiEngine
 import com.blecky.assistant.brain.Persona
+import com.blecky.assistant.brain.WebLookup
 import com.blecky.assistant.tools.BleckyTool
 import com.blecky.assistant.tools.ToolContext
 import com.blecky.assistant.tools.UserChannel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -46,11 +47,7 @@ class Brain(
         return candidates.map { it to settings.keyFor(it.id) }.filter { it.second.isNotBlank() }
     }
 
-    private fun online(): Boolean {
-        val connectivity = context.getSystemService(ConnectivityManager::class.java)
-        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
-        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    }
+    private fun online() = WebLookup.isOnline(context)
 
     /**
      * Answers [text] from the user. With [fromScheduler], [text] is an instruction from Blecky's
@@ -65,12 +62,20 @@ class Brain(
             }
             val message = Persona.userMessage(text, fromScheduler)
             val ctx = ToolContext(context, user)
-            when (provider) {
-                Settings.PROVIDER_CLAUDE ->
-                    if (settings.apiKey.isBlank()) "I need an Anthropic API key for Claude. Or switch my brain to Auto in Settings; that one's free."
-                    else claude.ask(message, settings.apiKey, ctx, fromScheduler)
-                Settings.PROVIDER_OFFLINE -> offline.ask(message, "", ctx, fromScheduler)
-                else -> askFree(provider, text, message, ctx, fromScheduler)
+            try {
+                when (provider) {
+                    Settings.PROVIDER_CLAUDE ->
+                        if (settings.apiKey.isBlank()) "I need an Anthropic API key for Claude. Or switch my brain to Auto in Settings; that one's free."
+                        else claude.ask(message, settings.apiKey, ctx, fromScheduler)
+                    Settings.PROVIDER_OFFLINE -> offline.ask(message, "", ctx, fromScheduler)
+                    else -> askFree(provider, text, message, ctx, fromScheduler)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Never let one bad answer crash the whole app.
+                Log.e("Blecky", "Brain failed", e)
+                "Oops, something glitched in my head (${e.javaClass.simpleName}). Try that again?"
             }
         }
     }
