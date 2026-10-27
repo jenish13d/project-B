@@ -197,6 +197,24 @@
                 android:text="Also: open Recents, long-press Blecky and tap the lock icon so HyperOS keeps her running." />
         </LinearLayout>
 
+        <TextView style="@style/HudSection" android:text="UPDATES AND HELP" />
+
+        <Button
+            android:id="@+id/check_updates"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Check for updates" />
+
+        <Button
+            android:id="@+id/send_report"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Send a report to Claude" />
+
+        <TextView
+            style="@style/HudNote"
+            android:text="Updates come from Blecky's GitHub release; Android asks before installing. A report opens a GitHub issue with Blecky's status, battery temperature and error log (no conversations) for you to check and submit." />
+
         <TextView style="@style/HudSection" android:text="MAKE BLECKY YOURS" />
 
         <Button

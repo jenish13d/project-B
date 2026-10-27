@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import com.blecky.assistant.tools.allTools
+import com.blecky.assistant.updates.Diagnostics
 import com.blecky.assistant.voice.VoiceIO
 
 class BleckyApp : Application() {
@@ -16,6 +17,7 @@ class BleckyApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Diagnostics.installCrashHandler(this)
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_LISTENING, "Listening for Hey Blecky", NotificationManager.IMPORTANCE_LOW),

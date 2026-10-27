@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.blecky.assistant.brain.OfflineModels
 import com.blecky.assistant.tools.InnerLife
+import com.blecky.assistant.updates.UpdateUi
 import com.blecky.assistant.tools.Memory
 import com.blecky.assistant.tools.NotificationReader
 import com.blecky.assistant.tools.Reminders
@@ -80,6 +81,10 @@ class SettingsActivity : Activity() {
         button(R.id.gujarati_voice).setOnClickListener { setUpGujaratiVoice() }
         button(R.id.offline_model).setOnClickListener { chooseOfflineModel() }
         button(R.id.setup_all).setOnClickListener { setUpEverything() }
+        button(R.id.check_updates).setOnClickListener {
+            UpdateUi.check(this, scope, quiet = false) { text -> status.text = text }
+        }
+        button(R.id.send_report).setOnClickListener { UpdateUi.sendReport(this) }
 
         button(R.id.toggle_listening).setOnClickListener {
             if (WakeWordService.isRunning && settings.listening) WakeWordService.stop(this) else startListening()

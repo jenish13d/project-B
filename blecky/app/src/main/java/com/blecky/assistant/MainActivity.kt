@@ -18,6 +18,8 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.blecky.assistant.tools.Reminders
 import com.blecky.assistant.tools.UserChannel
+import com.blecky.assistant.updates.UpdateUi
+import com.blecky.assistant.updates.Updater
 import com.blecky.assistant.voice.ModelInstaller
 import com.blecky.assistant.voice.VoiceState
 import com.blecky.assistant.voice.WakeWordService
@@ -96,6 +98,8 @@ class MainActivity : Activity() {
         ConversationLog.addListener(onLogChanged)
         renderTranscript()
         status.post(statusTicker)
+        UpdateUi.offerCrashReport(this)
+        if (Updater.due(this)) UpdateUi.check(this, scope, quiet = true)
         // Bring the listener back after a reboot or after Android stopped it.
         if (blecky.settings.listening && !WakeWordService.isRunning && Permissions.hasMic(this) && ModelInstaller.isInstalled(this)) {
             WakeWordService.listen(this)

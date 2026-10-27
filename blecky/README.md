@@ -145,6 +145,18 @@ you a few minutes after the screen turns off.
 - **"Can't reach Anthropic"**: check mobile data or Wi-Fi, and make sure no data saver or VPN is blocking Blecky.
 - **Voice pauses between sentences**: pick a "fast" voice (Jenny, Amy or Hannah). The premium voices are too slow for budget phones.
 
+## Updates and reports
+
+- **Updates install themselves.** Every push that touches `blecky/` is built by GitHub Actions
+  (`.github/workflows/blecky.yml`) and published to the `blecky-latest` release. Blecky checks it
+  every few hours when you open her, or right away from **Settings → Check for updates**. She
+  downloads the new APK, checks its SHA-256, and Android asks you to confirm the install. The first
+  time, allow "Install unknown apps" for Blecky.
+- **Reports go to GitHub issues.** If Blecky crashed, she offers to send the crash on the next
+  launch. **Settings → Send a report to Claude** works any time. Either way, a GitHub issue opens
+  with her status, battery temperature, last crash and recent warnings, all filled in. You read it and
+  tap Submit. Reports never include conversations, and nothing is sent without you.
+
 ## Battery and heat
 
 - The wake-word listener checks how loud the microphone is first and only runs speech recognition

@@ -30,8 +30,10 @@ android {
         applicationId = "com.blecky.assistant"
         minSdk = 30
         targetSdk = 35
-        versionCode = 11
-        versionName = "8.3"
+        // CI passes -PbleckyBuild=<run number> so every published build is newer than the last.
+        val ciBuild = (project.findProperty("bleckyBuild") as String?)?.toIntOrNull()
+        versionCode = if (ciBuild != null) 1000 + ciBuild else 12
+        versionName = if (ciBuild != null) "8.4.$ciBuild" else "8.4"
 
         ndk {
             // 64-bit ARM covers every phone from the last several years and keeps the APK small.
