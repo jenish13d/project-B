@@ -45,7 +45,7 @@ jobs:
           notes = notes.removeprefix("Blecky: ").strip()
           json.dump({
               "versionCode": 1000 + int(os.environ["GITHUB_RUN_NUMBER"]),
-              "versionName": f"8.4.{os.environ['GITHUB_RUN_NUMBER']}",
+              "versionName": f"8.5.{os.environ['GITHUB_RUN_NUMBER']}",
               "notes": notes[:1].upper() + notes[1:],
               "apkUrl": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/blecky-latest/blecky.apk",
               "sha256": hashlib.sha256(open("blecky.apk", "rb").read()).hexdigest(),

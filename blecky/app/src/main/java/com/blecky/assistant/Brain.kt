@@ -12,6 +12,7 @@ import com.blecky.assistant.brain.WebLookup
 import com.blecky.assistant.tools.BleckyTool
 import com.blecky.assistant.tools.ToolContext
 import com.blecky.assistant.tools.UserChannel
+import com.blecky.assistant.updates.LiveLink
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -75,6 +76,7 @@ class Brain(
             } catch (e: Exception) {
                 // Never let one bad answer crash the whole app.
                 Log.e("Blecky", "Brain failed", e)
+                LiveLink.event(context, "brain-error", "Brain failed with ${e.javaClass.simpleName} at ${e.stackTrace.firstOrNull()}")
                 "Oops, something glitched in my head (${e.javaClass.simpleName}). Try that again?"
             }
         }

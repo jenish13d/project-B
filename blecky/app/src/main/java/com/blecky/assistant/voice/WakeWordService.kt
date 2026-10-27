@@ -17,6 +17,7 @@ import com.blecky.assistant.MainActivity
 import com.blecky.assistant.R
 import com.blecky.assistant.blecky
 import com.blecky.assistant.tools.UserChannel
+import com.blecky.assistant.updates.LiveLink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -57,6 +58,7 @@ class WakeWordService : Service() {
 
     private fun onMicError(exception: Exception) {
         Log.w(TAG, "Wake listener failed; restarting", exception)
+        LiveLink.event(this, "mic-error", "Wake listener failed (${exception.javaClass.simpleName}: ${exception.message?.take(120)}); restarting in 2 s.")
         stopWakeListener()
         scope.launch {
             delay(2_000)

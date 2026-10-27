@@ -17,6 +17,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.blecky.assistant.brain.OfflineModels
 import com.blecky.assistant.tools.InnerLife
+import com.blecky.assistant.updates.LiveLink
 import com.blecky.assistant.updates.UpdateUi
 import com.blecky.assistant.tools.Memory
 import com.blecky.assistant.tools.NotificationReader
@@ -85,6 +86,44 @@ class SettingsActivity : Activity() {
             UpdateUi.check(this, scope, quiet = false) { text -> status.text = text }
         }
         button(R.id.send_report).setOnClickListener { UpdateUi.sendReport(this) }
+        val liveField = findViewById<EditText>(R.id.live_token)
+        button(R.id.save_live).setOnClickListener {
+            LiveLink.setToken(this, liveField.text.toString())
+            liveField.text.clear()
+            if (!LiveLink.isOn(this)) {
+                toast("Live link turned off")
+                refresh()
+                return@setOnClickListener
+            }
+            scope.launch {
+                status.text = "Connecting to GitHub…"
+                runCatching { LiveLink.test(this@SettingsActivity) }
+                    .onSuccess { toast("Connected. Blecky's live status is GitHub issue #$it") }
+                    .onFailure { toast("Couldn't connect: ${it.message}") }
+                refresh()
+            }
+        }
+        button(R.id.live_how).setOnClickListener {
+            AlertDialog.Builder(this)
+                .setTitle("GitHub token for the live link")
+                .setMessage(
+                    "1. Tap Open GitHub (sign in if asked).\n" +
+                        "2. Token name: Blecky. Expiration: up to a year.\n" +
+                        "3. Repository access: Only select repositories → project-B.\n" +
+                        "4. Permissions → Repository permissions → Issues: Read and write. Nothing else.\n" +
+                        "5. Generate token, copy it, come back and paste it here, then tap Connect.\n\n" +
+                        "This token can only post issues on project-B. It can't change code or touch anything else. " +
+                        "Your repo is public, so Blecky only posts app status and crash details, never your conversations.",
+                )
+                .setPositiveButton("Open GitHub") { _, _ ->
+                    openFirst(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/settings/personal-access-tokens/new")))
+                }
+                .setNegativeButton("Close", null)
+                .show()
+        }
+        if (intent.getBooleanExtra(EXTRA_CHECK_UPDATES, false)) {
+            UpdateUi.check(this, scope, quiet = false) { text -> status.text = text }
+        }
 
         button(R.id.toggle_listening).setOnClickListener {
             if (WakeWordService.isRunning && settings.listening) WakeWordService.stop(this) else startListening()
@@ -407,6 +446,13 @@ class SettingsActivity : Activity() {
         val level = STRICTNESS.minByOrNull { kotlin.math.abs(it.second - settings.voiceThreshold) }?.first ?: "normal"
         val last = settings.lastVoiceScore.takeIf { it >= 0 }?.let { " (last try matched ${(it * 100).toInt()}%)" } ?: ""
         button(R.id.voice_strictness).text = "Voice match: $level$last"
+        findViewById<TextView>(R.id.live_note).text = if (LiveLink.isOn(this)) {
+            "Connected ✓ Blecky updates the “${LiveLink.STATUS_TITLE}” issue on GitHub every 30 minutes, files crashes automatically, " +
+                "and Claude checks it regularly. To disconnect, tap Connect with the box empty."
+        } else {
+            "Let Blecky report to Claude by herself: her status every 30 minutes, every crash, and when she stops listening. " +
+                "Claude checks regularly and pushes fixes, which reach you as updates. Needs a free GitHub token that can only post issues."
+        }
         button(R.id.check_in_time).text = settings.checkInMinute.let {
             if (it < 0) "Daily check-in: off" else "Daily check-in: %02d:%02d".format(it / 60, it % 60)
         }
@@ -524,6 +570,8 @@ class SettingsActivity : Activity() {
     }
 
     companion object {
+        const val EXTRA_CHECK_UPDATES = "check_updates"
+
         private val STRICTNESS = listOf("relaxed" to 0.35f, "normal" to 0.45f, "strict" to 0.55f)
         private val BRAINS = listOf(
             Prefs.PROVIDER_AUTO to "Auto: free online AIs, then on-phone AI",

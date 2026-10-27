@@ -157,6 +157,22 @@ you a few minutes after the screen turns off.
   with her status, battery temperature, last crash and recent warnings, all filled in. You read it and
   tap Submit. Reports never include conversations, and nothing is sent without you.
 
+## Live link to Claude
+
+Optional. Under **Settings → Live link to Claude**, paste a GitHub fine-grained token that has only
+**Issues: Read and write** on project-B. The app shows the steps. Blecky then:
+
+- keeps one **"Blecky live status"** issue up to date every 30 minutes: version, listening state,
+  battery level and temperature, brain, voice and permissions;
+- files every **crash** as its own issue, with its stack trace;
+- comments on the status issue when something goes wrong (her mic failed, her brain errored,
+  listening stopped), a few times a day at most;
+- shows a notification when an update is ready.
+
+Claude checks these issues on a schedule, fixes what's broken and pushes. GitHub builds the update,
+and Blecky offers it to you. The repo is public, so the live link never posts conversations,
+contacts or log lines. Disconnect any time by saving an empty token, or revoke the token on GitHub.
+
 ## Battery and heat
 
 - The wake-word listener checks how loud the microphone is first and only runs speech recognition

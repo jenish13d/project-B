@@ -35,4 +35,12 @@ class UpdatesTest {
         assertTrue(decoded.endsWith("(cut to fit)"))
         assertEquals(1, Regex("cut to fit").findAll(decoded).count())
     }
+
+    @Test
+    fun `public status carries app state only`() {
+        val public = Diagnostics.format(linkedMapOf("Listening" to "service running"), crash = null, logs = "")
+        assertTrue(public.contains("service running"))
+        assertFalse(public.contains("warnings"))
+        assertFalse(public.contains("crash", ignoreCase = true))
+    }
 }

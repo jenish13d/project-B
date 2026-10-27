@@ -215,6 +215,41 @@
             style="@style/HudNote"
             android:text="Updates come from Blecky's GitHub release; Android asks before installing. A report opens a GitHub issue with Blecky's status, battery temperature and error log (no conversations) for you to check and submit." />
 
+        <TextView style="@style/HudSection" android:text="LIVE LINK TO CLAUDE" />
+
+        <TextView
+            android:id="@+id/live_note"
+            style="@style/HudNote" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/live_token"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="GitHub token (github_pat_…)"
+                android:importantForAutofill="no"
+                android:inputType="textPassword" />
+
+            <Button
+                android:id="@+id/save_live"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginTop="0dp"
+                android:text="Connect" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/live_how"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="How to get the GitHub token (2 minutes)" />
+
         <TextView style="@style/HudSection" android:text="MAKE BLECKY YOURS" />
 
         <Button

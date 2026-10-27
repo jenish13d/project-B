@@ -50,6 +50,11 @@ object UpdateUi {
     /** Offers to send the last crash, if there was one, then forgets it either way. */
     fun offerCrashReport(activity: Activity) {
         Diagnostics.lastCrash(activity) ?: return
+        // With the live link on, the check-in files the crash by itself.
+        if (LiveLink.isOn(activity)) {
+            LiveLink.schedule(activity)
+            return
+        }
         AlertDialog.Builder(activity)
             .setTitle("Blecky crashed last time")
             .setMessage("Send the crash report to Claude so it can be fixed? You'll see it on GitHub before submitting.")

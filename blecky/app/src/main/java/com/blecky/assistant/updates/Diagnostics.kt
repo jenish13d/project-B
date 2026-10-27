@@ -53,8 +53,11 @@ object Diagnostics {
         crashFile(context).delete()
     }
 
-    /** A readable snapshot of how Blecky is doing on this phone. */
-    fun report(context: Context): String {
+    /** A readable snapshot of how Blecky is doing on this phone, with her recent warnings. */
+    fun report(context: Context): String = format(status(context), lastCrash(context), ownLogs())
+
+    /** App state only: safe to post publicly. */
+    fun status(context: Context): Map<String, String> {
         val app = context.blecky
         val settings = app.settings
         val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
@@ -72,7 +75,7 @@ object Diagnostics {
             "Voice" to (app.voice.neuralPack()?.id ?: "phone voice"),
             "Permissions" to "mic ${Permissions.hasMic(context)}, notifications ${Permissions.notificationAccess(context)}",
         )
-        return format(status, lastCrash(context), ownLogs())
+        return status
     }
 
     fun format(status: Map<String, String>, crash: String?, logs: String): String = buildString {
