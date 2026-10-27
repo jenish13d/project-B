@@ -49,7 +49,10 @@ Blecky runs on Claude (Anthropic) and can:
    2. **Display over other apps**. Without it, Android won't let Blecky open apps or calls while it runs in the background.
    3. **Battery: unrestricted**. Without it, Android may stop Blecky when the screen is off. On Samsung, Xiaomi and
       similar phones, also turn off any "sleeping apps" or "auto-start" restriction for Blecky.
-   4. **Notification access**, which lets Blecky read new emails and messages to you.
+   4. **Notification access**, which lets Blecky read new emails and messages to you. Android blocks this
+      for apps installed from an APK file. If it says "restricted setting" or "not allowed", open
+      **Settings → Apps → Blecky**, tap **⋮** (top right) → **Allow restricted settings**, then try again.
+      The ⋮ option only appears after Android has blocked it once. The app walks you through this.
 4. Tap **Start listening**. The first time, Blecky downloads two offline models (about 55 MB in total).
 5. Optional, under **Settings**: teach her your voice and turn on the voice lock, try other voices
    (she starts on a friendly female English voice, and the choice depends on the voices your phone
@@ -82,5 +85,5 @@ Run the unit tests with `./gradlew testDebugUnitTest`.
 ## Privacy
 
 Your API key, notes, reminders, memories and voiceprint are stored only in the app's private storage on the phone. Audio
-before the wake word is processed on the phone. What you say after the beep goes through Android's
+before the wake word is processed on the phone. What you say after she wakes goes through Android's
 speech recognizer (usually Google) and Anthropic's API.

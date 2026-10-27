@@ -89,7 +89,7 @@ class MainActivity : Activity() {
             )
         }
         findViewById<Button>(R.id.grant_notifications).setOnClickListener {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            if (notificationAccess()) openNotificationAccess() else explainNotificationAccess()
         }
         toggle.setOnClickListener {
             if (WakeWordService.isRunning && blecky.settings.listening) WakeWordService.stop(this) else startListening()
@@ -259,6 +259,39 @@ class MainActivity : Activity() {
             setButton(TimePickerDialog.BUTTON_NEUTRAL, "Turn off") { _, _ -> apply(-1) }
             show()
         }
+    }
+
+    /** Opens Blecky's own notification-access switch, falling back to the full list. */
+    private fun openNotificationAccess() {
+        val component = ComponentName(this, NotificationReader::class.java).flattenToString()
+        val direct = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+            .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component)
+        runCatching { startActivity(direct) }
+            .onFailure { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+    }
+
+    /**
+     * Android 13+ blocks notification access for apps installed from an APK file ("restricted
+     * setting") until the user allows it from the app's info page.
+     */
+    private fun explainNotificationAccess() {
+        AlertDialog.Builder(this)
+            .setTitle("Let Blecky read emails and messages")
+            .setMessage(
+                "If Android says this setting is restricted or not allowed, that's because Blecky was " +
+                    "installed from a file instead of the Play Store. To allow it:\n\n" +
+                    "1. Tap “Try to turn it on” and switch Blecky on. If Android blocks it, tap OK.\n" +
+                    "2. Come back and tap “Open app info”.\n" +
+                    "3. Tap the ⋮ menu (top right), then “Allow restricted settings”, and confirm with your PIN or fingerprint.\n" +
+                    "4. Tap “Try to turn it on” again and switch Blecky on.\n\n" +
+                    "No ⋮ menu? Do step 1 first. The option only appears after Android has blocked it once.",
+            )
+            .setPositiveButton("Try to turn it on") { _, _ -> openNotificationAccess() }
+            .setNeutralButton("Open app info") { _, _ ->
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun showMemories() {
