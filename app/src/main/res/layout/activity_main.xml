@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Blecky"
+        android:textSize="28sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingVertical="4dp"
+        android:textSize="15sp" />
+
+    <LinearLayout
+        android:id="@+id/setup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <EditText
+                android:id="@+id/api_key"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Anthropic API key (sk-ant-…)"
+                android:importantForAutofill="no"
+                android:inputType="textPassword" />
+
+            <Button
+                android:id="@+id/save_key"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Save" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/grant_permissions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="1. Allow microphone, calls, texts, contacts, calendar" />
+
+        <Button
+            android:id="@+id/grant_overlay"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="2. Allow Blecky to open apps from the background" />
+
+        <Button
+            android:id="@+id/grant_battery"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="3. Let Blecky run in the background (battery)" />
+
+        <Button
+            android:id="@+id/grant_notifications"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="4. Let Blecky read notifications (emails, messages)" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/toggle_listening"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start listening for “Hey Blecky”" />
+
+    <ScrollView
+        android:id="@+id/transcript_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginVertical="8dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/transcript"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textIsSelectable="true"
+            android:textSize="16sp" />
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <EditText
+            android:id="@+id/input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Type to Blecky…"
+            android:imeOptions="actionSend"
+            android:importantForAutofill="no"
+            android:inputType="textCapSentences" />
+
+        <Button
+            android:id="@+id/send"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Send" />
+
+        <ImageButton
+            android:id="@+id/talk"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:contentDescription="Talk to Blecky"
+            android:src="@drawable/ic_mic" />
+    </LinearLayout>
+</LinearLayout>
