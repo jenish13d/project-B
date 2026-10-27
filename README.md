@@ -5,6 +5,16 @@ quick, warm, a little witty, and on your side. Say **"Hey Blecky"** or just **"B
 ("Yes, Jai?") and you ask for something. It works with the screen on or off, as long as listening is
 switched on. With the voice lock on, she only wakes for your voice.
 
+**She also thinks without internet or any key.** Download a free on-phone AI (Gemma 4 by Google,
+Qwen3 or LFM2), and it runs entirely on your phone. In Auto mode she uses it when you're offline or
+every free online limit is used up. Calls, timers, the torch, opening apps, the time and the battery
+work instantly with no AI at all, in English, Hinglish, Hindi and Gujarati.
+
+**She has an inner life.** Her mood shifts with what happens and fades back over half a day. She
+remembers how you were feeling last time and keeps a short diary of moments you shared, so she can
+ask how the exam went or be happy for you days later. It's simulated, and if you ask, she's honest
+that she's an AI.
+
 She understands **English, Hindi and Gujarati**, mixed too, and answers in the same language: Hindi with
 an offline Hindi voice, Gujarati with Google's free voice.
 
@@ -87,6 +97,21 @@ Blecky can:
    (she starts on a friendly female English voice, and the choice depends on the voices your phone
    has installed), set or turn off the daily check-in, and see or clear what she remembers.
 
+## On-phone AI
+
+**Settings → On-phone AI** lists the models; the one that fits your phone's memory is marked ★.
+Downloads use Android's download manager, so you can leave the app while they run.
+
+| Model | Size | Notes from testing |
+|---|---|---|
+| Gemma 4 E2B (Google) ★ | 2.6 GB | Best by far: natural, warm, good Hindi and Gujarati, uses tools. About 1.5 GB of RAM. |
+| Qwen3 1.7B (Alibaba) | 1 GB | Smaller download; weaker Hindi and Gujarati; slower. |
+| LFM2 700M (Liquid AI) | 0.5 GB | Fastest; English only (its Hindi and Gujarati are garbled). |
+
+These are much smaller than the online brains: fine for chatting and quick help, weaker at complex
+questions, and they sometimes claim to have done something they didn't. Everyday commands skip the
+model entirely, which covers most of that.
+
 ## Languages
 
 Under **Settings → Listening → I speak**, choose English, Hindi and Gujarati (the default), or just
@@ -127,7 +152,9 @@ you a few minutes after the screen turns off.
 
 - `Brain.kt` routes each message to the chosen AI. `brain/OpenAiEngine.kt` runs the tool loop for Gemini
   and Groq, and picks a current model by itself when model names change. `brain/ClaudeEngine.kt` runs
-  Claude. `brain/Persona.kt` holds her personality.
+  Claude. `brain/Persona.kt` holds her personality. `tools/InnerLife.kt` holds her moods and diary.
+- `brain/OfflineEngine.kt` and `brain/OfflineModels.kt` hold the on-phone AI. `brain/LocalCommands.kt`
+  handles the instant commands.
 - `tools/` holds everything Blecky can do. To add a skill, write a `BleckyTool` and add it to `allTools()`.
 - `voice/WakeWordService.kt` is the always-on listener, the voice lock and the spoken conversation loop.
 - `voice/VoiceEnrollment.kt` and `voice/SpeakerProfile.kt` record and compare your voiceprint.
@@ -143,6 +170,8 @@ Run the unit tests with `./gradlew testDebugUnitTest`.
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx): runs neural voices on the phone.
 - [Piper](https://github.com/rhasspy/piper) voices: Jenny, Amy and Hannah, fast and natural.
 - [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M): the premium voices (Apache 2.0).
+- [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) runs the on-phone AI, with models from
+  [litert-community](https://huggingface.co/litert-community): Gemma 4, Qwen3 and LFM2.
 - [Open-Meteo](https://open-meteo.com) for weather, and Google News RSS and the Wikipedia API for search.
 - [Anthropic Java SDK](https://github.com/anthropics/anthropic-sdk-java): Claude, Blecky's brain.
 

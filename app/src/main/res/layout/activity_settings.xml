@@ -67,6 +67,18 @@
             android:id="@+id/provider_note"
             style="@style/HudNote" />
 
+        <TextView style="@style/HudSection" android:text="ON-PHONE AI (NO INTERNET, NO KEY)" />
+
+        <Button
+            android:id="@+id/offline_model"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Download an on-phone AI" />
+
+        <TextView
+            android:id="@+id/offline_note"
+            style="@style/HudNote" />
+
         <TextView style="@style/HudSection" android:text="LISTENING" />
 
         <Button

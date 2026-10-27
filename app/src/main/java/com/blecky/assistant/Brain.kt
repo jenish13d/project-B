@@ -1,8 +1,12 @@
 package com.blecky.assistant
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import com.blecky.assistant.brain.ClaudeEngine
 import com.blecky.assistant.brain.FreeProvider
+import com.blecky.assistant.brain.LocalCommands
+import com.blecky.assistant.brain.OfflineEngine
 import com.blecky.assistant.brain.OpenAiEngine
 import com.blecky.assistant.brain.Persona
 import com.blecky.assistant.tools.BleckyTool
@@ -14,8 +18,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
- * Sends what the user said to Blecky's brain and returns her reply. By default the brain combines
- * every free AI the user has a key for; Claude is there for anyone with Anthropic credit.
+ * Sends what the user said to Blecky's brain and returns her reply. In Auto mode it combines every
+ * free online AI the user has a key for, then falls back to the AI running on the phone (no
+ * internet, no key), and finally to built-in commands. Claude is there for anyone with credit.
  */
 class Brain(
     private val context: Context,
@@ -23,12 +28,14 @@ class Brain(
     tools: List<BleckyTool>,
 ) {
     private val free = OpenAiEngine(context, settings, tools) { freeProviders() }
+    val offline = OfflineEngine(context, settings, tools)
     private val claude = ClaudeEngine(context, settings, tools)
     private val lock = Mutex()
     private var lastProvider: String? = null
 
     fun reset() {
         free.reset()
+        offline.reset()
         claude.reset()
     }
 
@@ -37,6 +44,12 @@ class Brain(
         val chosen = settings.provider
         val candidates = if (chosen == Settings.PROVIDER_AUTO) FreeProvider.ALL else listOfNotNull(FreeProvider.byId(chosen))
         return candidates.map { it to settings.keyFor(it.id) }.filter { it.second.isNotBlank() }
+    }
+
+    private fun online(): Boolean {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        val caps = connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     /**
@@ -52,15 +65,32 @@ class Brain(
             }
             val message = Persona.userMessage(text, fromScheduler)
             val ctx = ToolContext(context, user)
-            if (provider == Settings.PROVIDER_CLAUDE) {
-                if (settings.apiKey.isBlank()) return@withLock "I need an Anthropic API key for Claude. Or switch my brain to Auto in Settings; that one's free."
-                claude.ask(message, settings.apiKey, ctx, fromScheduler)
-            } else {
-                if (freeProviders().isEmpty()) {
-                    return@withLock "I need a free AI key first. Gemini is easiest: get one at ${FreeProvider.GEMINI.keyUrl} and paste it in Settings."
-                }
-                free.ask(message, "", ctx, fromScheduler)
+            when (provider) {
+                Settings.PROVIDER_CLAUDE ->
+                    if (settings.apiKey.isBlank()) "I need an Anthropic API key for Claude. Or switch my brain to Auto in Settings; that one's free."
+                    else claude.ask(message, settings.apiKey, ctx, fromScheduler)
+                Settings.PROVIDER_OFFLINE -> offline.ask(message, "", ctx, fromScheduler)
+                else -> askFree(provider, text, message, ctx, fromScheduler)
             }
+        }
+    }
+
+    private suspend fun askFree(provider: String, text: String, message: String, ctx: ToolContext, fromScheduler: Boolean): String {
+        val auto = provider == Settings.PROVIDER_AUTO
+        var failure: String? = null
+        if (freeProviders().isNotEmpty() && online()) {
+            val reply = free.ask(message, "", ctx, fromScheduler)
+            if (!free.lastTurnFailed || !auto) return reply
+            failure = reply
+        }
+        // Offline, out of free limits, or no keys: the on-phone brain takes over.
+        if (auto && offline.available()) return offline.ask(message, "", ctx, fromScheduler)
+        if (!fromScheduler) LocalCommands.parse(text)?.let { return offline.runCommand(it, ctx).text }
+        return failure ?: when {
+            freeProviders().isEmpty() ->
+                "I need a brain first. Add a free AI key in Settings (Gemini is easiest: ${FreeProvider.GEMINI.keyUrl}), " +
+                    "or download an on-phone AI that works without internet."
+            else -> "I'm offline right now. Download an on-phone AI in Settings and I can still chat without internet."
         }
     }
 }

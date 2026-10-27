@@ -30,8 +30,8 @@ android {
         applicationId = "com.blecky.assistant"
         minSdk = 30
         targetSdk = 35
-        versionCode = 6
-        versionName = "6.0"
+        versionCode = 7
+        versionName = "7.0"
 
         ndk {
             // 64-bit ARM covers every phone from the last several years and keeps the APK small.
@@ -87,6 +87,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation(files(sherpaAar))
     implementation("org.apache.commons:commons-compress:1.28.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.18.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20250517")

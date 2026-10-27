@@ -65,6 +65,9 @@ class OpenAiEngine(
     private var system = Persona.PROMPT
     private var lastTurnAt = 0L
 
+    override var lastTurnFailed = false
+        private set
+
     /** The provider that answered last; tried first next time. */
     private var preferred: String? = null
 
@@ -80,10 +83,12 @@ class OpenAiEngine(
         lastTurnAt = now
 
         val startSize = history.size
+        lastTurnFailed = false
         return try {
             history += JSONObject().put("role", "user").put("content", text)
             runTurn(ctx)
         } catch (e: Exception) {
+            lastTurnFailed = true
             while (history.size > startSize) history.removeAt(history.size - 1)
             Log.w("Blecky", "Free brain failed", e)
             describe(e)

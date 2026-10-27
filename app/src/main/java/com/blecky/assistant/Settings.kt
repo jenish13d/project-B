@@ -93,6 +93,11 @@ class Settings(context: Context) {
         get() = prefs.getInt("check_in_minute", 9 * 60)
         set(value) = prefs.edit().putInt("check_in_minute", value).apply()
 
+    /** Which on-phone AI model to use (see OfflineModels.MODELS). */
+    var offlineModel: String
+        get() = prefs.getString("offline_model", DEFAULT_OFFLINE_MODEL) ?: DEFAULT_OFFLINE_MODEL
+        set(value) = prefs.edit().putString("offline_model", value).apply()
+
     /** Also wake on "Bleck" said on its own. Off by default: short sounds get mistaken for it. */
     var wakeOnNameAlone: Boolean
         get() = prefs.getBoolean("wake_name_alone", false)
@@ -125,6 +130,8 @@ class Settings(context: Context) {
         const val PROVIDER_CEREBRAS = "cerebras"
         const val PROVIDER_OPENROUTER = "openrouter"
         const val PROVIDER_AUTO = "auto"
+        const val PROVIDER_OFFLINE = "offline"
+        const val DEFAULT_OFFLINE_MODEL = "gemma4-e2b"
         val FREE_PROVIDERS = listOf(PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS, PROVIDER_OPENROUTER)
         const val DEFAULT_VOICE_THRESHOLD = 0.45f
     }

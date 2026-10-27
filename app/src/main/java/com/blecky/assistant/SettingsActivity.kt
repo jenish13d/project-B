@@ -15,6 +15,8 @@ import com.blecky.assistant.Settings as Prefs
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
+import com.blecky.assistant.brain.OfflineModels
+import com.blecky.assistant.tools.InnerLife
 import com.blecky.assistant.tools.Memory
 import com.blecky.assistant.tools.NotificationReader
 import com.blecky.assistant.tools.Reminders
@@ -76,6 +78,7 @@ class SettingsActivity : Activity() {
             refresh()
         }
         button(R.id.gujarati_voice).setOnClickListener { setUpGujaratiVoice() }
+        button(R.id.offline_model).setOnClickListener { chooseOfflineModel() }
         val elevenField = findViewById<EditText>(R.id.eleven_key)
         button(R.id.save_eleven).setOnClickListener {
             settings.elevenLabsKey = elevenField.text.toString()
@@ -172,7 +175,7 @@ class SettingsActivity : Activity() {
 
     private fun startListening() {
         when {
-            blecky.settings.activeKey.isBlank() -> toast("Paste your free AI key first (Brain section)")
+            !blecky.hasBrain() -> toast("Add a free AI key or download an on-phone AI first")
             !Permissions.hasMic(this) -> requestPermissions(Permissions.RUNTIME, 1)
             !ModelInstaller.isInstalled(this) -> installModels { WakeWordService.listen(this) }
             else -> WakeWordService.listen(this)
@@ -319,7 +322,9 @@ class SettingsActivity : Activity() {
 
     private fun showMemories() {
         scope.launch {
-            val text = withContext(Dispatchers.IO) { Memory.promptFor(this@SettingsActivity).trim() }
+            val text = withContext(Dispatchers.IO) {
+                (Memory.promptFor(this@SettingsActivity) + InnerLife.promptFor(this@SettingsActivity)).trim()
+            }
             AlertDialog.Builder(this@SettingsActivity)
                 .setTitle("What Blecky remembers")
                 .setMessage(text)
@@ -329,6 +334,7 @@ class SettingsActivity : Activity() {
                         .setMessage("Delete everything Blecky remembers about you, including your name?")
                         .setPositiveButton("Delete") { _, _ ->
                             Memory.store(this@SettingsActivity).save(emptyList())
+                            InnerLife.clear(this@SettingsActivity)
                             blecky.settings.userName = ""
                             blecky.brain.reset()
                             toast("Blecky's memory is cleared")
@@ -344,7 +350,7 @@ class SettingsActivity : Activity() {
         if (busy) return
         val settings = blecky.settings
         val missing = buildList {
-            if (settings.activeKey.isBlank()) add("AI key")
+            if (!blecky.hasBrain()) add("a brain (free key or on-phone AI)")
             if (!Permissions.hasMic(this@SettingsActivity)) add("step 1")
             if (!Settings.canDrawOverlays(this@SettingsActivity)) add("step 2")
             if (!getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) add("step 3")
@@ -355,7 +361,9 @@ class SettingsActivity : Activity() {
         status.text = buildString {
             append("Blecky v${BuildConfig.VERSION_NAME}\n")
             append(if (listening) "Listening. Say “Hey Blecky” or “Bleck”, even with the screen off." else "Not listening right now.")
-            append("\nBrain: ${if (settings.activeKey.isBlank()) "needs a free key (see Brain below)" else "ready"}")
+            val offline = blecky.brain.offline.models.active(settings.offlineModel)
+            append("\nOnline brain: ${if (settings.activeKey.isBlank()) "needs a free key" else "ready"}")
+            append(" · On-phone AI: ${offline?.label?.substringBefore(',') ?: "not downloaded"}")
             if (missing.isNotEmpty()) append("\nStill to set up: ${missing.joinToString()}.")
         }
         button(R.id.toggle_listening).text = if (listening) "Stop listening" else "Start listening for “Hey Blecky”"
@@ -368,6 +376,14 @@ class SettingsActivity : Activity() {
         findViewById<EditText>(R.id.api_key).hint = "${keyInfo.second} key"
         val saved = KEYS.filter { settings.keyFor(it.first).isNotBlank() }.joinToString { it.second }.ifEmpty { "none yet" }
         findViewById<TextView>(R.id.provider_note).text = "${keyInfo.third}\nKeys saved: $saved."
+        val models = blecky.brain.offline.models
+        val active = models.active(settings.offlineModel)
+        button(R.id.offline_model).text = active?.let { "On-phone AI: ${it.label} (tap to change)" } ?: "Download an on-phone AI (free)"
+        val ram = models.phoneRamGb()
+        findViewById<TextView>(R.id.offline_note).text =
+            "Works with no internet and no key. Your phone has %.0f GB of memory; recommended: %s. ".format(ram, OfflineModels.recommended(ram).label) +
+            "Simpler than the online brains, and she uses it automatically when you're offline or every free limit is used up. " +
+            "Calls, timers, the torch and opening apps work instantly even without a model."
         button(R.id.speech_mode).text = "I speak: " + (SPEECH.firstOrNull { it.first == settings.speechMode }?.second ?: SPEECH.first().second)
         button(R.id.name_alone).text = "Also wake on just “Bleck”: " + if (settings.wakeOnNameAlone) "on" else "off (fewer accidental wakes)"
         button(R.id.natural_voice).text = blecky.voice.neuralPack()?.let { "Natural voice: ${it.label} (tap for more)" }
@@ -389,6 +405,55 @@ class SettingsActivity : Activity() {
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /** Lists the on-phone AI models; picking one downloads it if needed and makes it active. */
+    private fun chooseOfflineModel() {
+        val models = blecky.brain.offline.models
+        val ram = models.phoneRamGb()
+        val recommended = OfflineModels.recommended(ram)
+        val all = OfflineModels.MODELS
+        val labels = all.map { model ->
+            val state = when {
+                models.isInstalled(model) -> "downloaded"
+                model.minRamGb > ram + 0.5 -> "${model.sizeMb} MB, too big for this phone"
+                else -> "${model.sizeMb} MB"
+            }
+            val star = if (model == recommended) " ★ recommended" else ""
+            "${model.label}$star · $state"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("On-phone AI")
+            .setSingleChoiceItems(labels, all.indexOfFirst { it.id == blecky.settings.offlineModel }) { dialog, which ->
+                dialog.dismiss()
+                val model = all[which]
+                val use = {
+                    blecky.settings.offlineModel = model.id
+                    blecky.brain.offline.reset()
+                    toast("${model.label.substringBefore(',')} is ready, no internet needed")
+                    refresh()
+                }
+                if (models.isInstalled(model)) use() else runDownload(use) {
+                    models.download(model) { text -> runOnUiThread { status.text = text } }
+                }
+            }
+            .setNeutralButton("Free up space") { _, _ ->
+                val installed = models.installed()
+                if (installed.isEmpty()) {
+                    toast("No models downloaded")
+                    return@setNeutralButton
+                }
+                AlertDialog.Builder(this)
+                    .setTitle("Delete a model")
+                    .setItems(installed.map { "${it.label} (${it.sizeMb} MB)" }.toTypedArray()) { _, i ->
+                        blecky.brain.offline.reset()
+                        models.delete(installed[i])
+                        refresh()
+                    }
+                    .show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
 
     /** Gujarati is read by Google's free speech engine; send the user to install or pick it. */
     private fun setUpGujaratiVoice() {
@@ -430,11 +495,12 @@ class SettingsActivity : Activity() {
     companion object {
         private val STRICTNESS = listOf("relaxed" to 0.35f, "normal" to 0.45f, "strict" to 0.55f)
         private val BRAINS = listOf(
-            Prefs.PROVIDER_AUTO to "Auto, all free AIs together",
+            Prefs.PROVIDER_AUTO to "Auto: free online AIs, then on-phone AI",
             Prefs.PROVIDER_GEMINI to "Google Gemini only (free)",
             Prefs.PROVIDER_GROQ to "Groq only (free)",
             Prefs.PROVIDER_CEREBRAS to "Cerebras only (free)",
             Prefs.PROVIDER_OPENROUTER to "OpenRouter only (free)",
+            Prefs.PROVIDER_OFFLINE to "On-phone AI only (no internet, no key)",
             Prefs.PROVIDER_CLAUDE to "Claude (paid)",
         )
         private val KEYS = listOf(

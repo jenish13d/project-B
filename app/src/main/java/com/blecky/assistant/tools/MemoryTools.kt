@@ -37,7 +37,7 @@ object Memory {
     }
 }
 
-fun memoryTools(): List<BleckyTool> = listOf(Remember, Forget, SetUserName)
+fun memoryTools(): List<BleckyTool> = listOf(Remember, Forget, SetUserName, Feel)
 
 object Remember : BleckyTool(
     "remember",

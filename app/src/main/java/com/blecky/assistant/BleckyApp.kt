@@ -11,6 +11,9 @@ class BleckyApp : Application() {
     val voice by lazy { VoiceIO(this, settings) }
     val brain by lazy { Brain(this, settings, allTools()) }
 
+    /** Whether any brain can answer: a free key, Claude, or a downloaded on-phone model. */
+    fun hasBrain() = settings.activeKey.isNotBlank() || brain.offline.available()
+
     override fun onCreate() {
         super.onCreate()
         val manager = getSystemService(NotificationManager::class.java)

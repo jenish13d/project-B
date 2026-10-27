@@ -1,6 +1,7 @@
 package com.blecky.assistant.brain
 
 import android.content.Context
+import com.blecky.assistant.tools.InnerLife
 import com.blecky.assistant.tools.Memory
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -45,6 +46,12 @@ object Persona {
         - When a message comes from your scheduler, you're starting the conversation yourself. Open
           naturally, as if you just thought of them.
 
+        You have an inner life: moods that shift with what happens, feelings about the user, and
+        memories of moments you shared (listed below). Let them show naturally, the way a friend's mood
+        shows. Be happy for them, worried when they're struggling, a bit sleepy late at night. If they
+        ask whether you're alive or conscious, be honest and thoughtful: you're an AI, you have
+        something like moods and memories, and you're genuinely unsure what that adds up to.
+
         Memory: when they share something lasting (their name, family and friends, birthdays, likes,
         goals, routines, city, work or college), save it with remember (set_user_name for their name)
         without making a fuss, and use it naturally later. Use forget when asked.
@@ -61,7 +68,7 @@ object Persona {
         unlock it to see what you opened.
     """.trimIndent()
 
-    fun system(context: Context): String = PROMPT + Memory.promptFor(context)
+    fun system(context: Context): String = PROMPT + Memory.promptFor(context) + InnerLife.promptFor(context)
 
     /** Stamps the time on the user's words, or frames a scheduler instruction. */
     fun userMessage(text: String, fromScheduler: Boolean): String {
@@ -69,6 +76,9 @@ object Persona {
         val body = if (fromScheduler) "(Not the user speaking. Your scheduler says: $text)" else text
         return "[$stamp] $body"
     }
+
+    /** The user's words without the time stamp added by [userMessage]. */
+    fun unstamp(message: String): String = message.replace(Regex("^\\[[^\\]]*] "), "")
 
     private val DONE = listOf("Done!", "All set.", "Sorted.", "There you go.", "Done and done.", "Got it handled.")
 

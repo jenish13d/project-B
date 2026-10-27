@@ -11,6 +11,9 @@ interface Engine {
     suspend fun ask(text: String, key: String, ctx: ToolContext, fromScheduler: Boolean): String
 
     fun reset()
+
+    /** Whether the last answer was an apology because no AI could reply (so another brain can try). */
+    val lastTurnFailed: Boolean get() = false
 }
 
 class ToolOutcome(val text: String, val isError: Boolean)
