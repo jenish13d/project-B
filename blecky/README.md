@@ -145,6 +145,17 @@ you a few minutes after the screen turns off.
 - **"Can't reach Anthropic"**: check mobile data or Wi-Fi, and make sure no data saver or VPN is blocking Blecky.
 - **Voice pauses between sentences**: pick a "fast" voice (Jenny, Amy or Hannah). The premium voices are too slow for budget phones.
 
+## Battery and heat
+
+- The wake-word listener checks how loud the microphone is first and only runs speech recognition
+  when someone is talking. In testing it processed 22% of the audio with "Hey Blecky" still recognized
+  at full confidence. In a quiet room it does almost nothing.
+- The particle orb draws its 650 particles in 6 batched calls, runs at 30 fps (15 when idle), and
+  stops whenever it isn't on screen.
+- The on-phone AI (about 1.5 GB for Gemma) is freed after 3 idle minutes, and the voice after 10, so
+  they don't crowd the phone's memory. The first reply after a break takes a few extra seconds while
+  the model loads.
+
 ## Things Android doesn't allow
 
 - **After a restart**, Android won't let an app turn its microphone back on by itself. Blecky shows a

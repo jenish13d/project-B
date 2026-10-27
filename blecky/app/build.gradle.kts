@@ -30,8 +30,8 @@ android {
         applicationId = "com.blecky.assistant"
         minSdk = 30
         targetSdk = 35
-        versionCode = 10
-        versionName = "8.2"
+        versionCode = 11
+        versionName = "8.3"
 
         ndk {
             // 64-bit ARM covers every phone from the last several years and keeps the APK small.

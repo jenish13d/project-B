@@ -1,13 +1,13 @@
 package com.blecky.assistant.ui
 
 import android.content.Context
-import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.View
 import com.blecky.assistant.voice.VoiceState
@@ -22,19 +22,39 @@ import kotlin.random.Random
 /**
  * A HUD-style sphere of glowing particles that breathes while waiting, ripples with your voice
  * while listening, swirls while thinking and pulses with Blecky's voice while she speaks.
+ *
+ * Drawn to keep the phone cool: particles go out in a few batched drawPoints calls instead of one
+ * call each, nothing is allocated per frame, and the frame rate drops to 30 fps (15 when idle) and
+ * stops whenever the view can't be seen.
  */
 class ParticleOrbView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
-    private class Particle(val x: Float, val y: Float, val z: Float, val phase: Float, val speed: Float)
+    private val baseX = FloatArray(COUNT)
+    private val baseY = FloatArray(COUNT)
+    private val baseZ = FloatArray(COUNT)
+    private val phase = FloatArray(COUNT)
+    private val speed = FloatArray(COUNT)
 
-    private val particles = List(COUNT) { i ->
+    init {
         // Even spread over a sphere (Fibonacci lattice).
-        val y = 1f - 2f * (i + 0.5f) / COUNT
-        val r = sqrt(1f - y * y)
-        val theta = i * GOLDEN_ANGLE
-        Particle(r * cos(theta), y, r * sin(theta), Random.nextFloat() * 6.28f, 0.6f + Random.nextFloat())
+        for (i in 0 until COUNT) {
+            val y = 1f - 2f * (i + 0.5f) / COUNT
+            val r = sqrt(1f - y * y)
+            val theta = i * GOLDEN_ANGLE
+            baseX[i] = r * cos(theta)
+            baseY[i] = y
+            baseZ[i] = r * sin(theta)
+            phase[i] = Random.nextFloat() * 6.28f
+            speed[i] = 0.6f + Random.nextFloat()
+        }
     }
 
-    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    // Particles are sorted into depth layers; each layer is one drawPoints call with its own size and alpha.
+    private val layerPoints = Array(LAYERS) { FloatArray(COUNT * 2) }
+    private val layerCount = IntArray(LAYERS)
+    private val layerPaints = Array(LAYERS) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeCap = Paint.Cap.ROUND }
+    }
+
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -43,31 +63,33 @@ class ParticleOrbView @JvmOverloads constructor(context: Context, attrs: Attribu
     private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val arc = RectF()
     private val density = resources.displayMetrics.density
-    private val ringGlow = BlurMaskFilter(density * 2f, BlurMaskFilter.Blur.SOLID)
 
     private var rotation = 0f
     private var ringAngle = 0f
     private var level = 0f
     private var time = 0f
-    private var lastFrameNanos = 0L
+    private var lastFrameMs = 0L
     private var red = 0f
     private var green = 229f
     private var blue = 255f
-    private var glowKey = 0
+    private var glowColor = 0
+    private var glowRadius = 0f
+    private var running = false
+
+    private val frame = Runnable { invalidate() }
 
     override fun onDraw(canvas: Canvas) {
-        val now = System.nanoTime()
-        val dt = if (lastFrameNanos == 0L) 0.016f else ((now - lastFrameNanos) / 1e9f).coerceAtMost(0.05f)
-        lastFrameNanos = now
+        val now = SystemClock.uptimeMillis()
+        val dt = if (lastFrameMs == 0L) 0.033f else ((now - lastFrameMs) / 1000f).coerceAtMost(0.1f)
+        lastFrameMs = now
         time += dt
 
         val mode = VoiceState.mode
         level += (VoiceState.level - level) * min(1f, dt * 10f)
-        val (tr, tg, tb) = colorFor(mode)
         val blend = min(1f, dt * 4f)
-        red += (tr - red) * blend
-        green += (tg - green) * blend
-        blue += (tb - blue) * blend
+        red += (targetRed(mode) - red) * blend
+        green += (targetGreen(mode) - green) * blend
+        blue += (targetBlue(mode) - blue) * blend
 
         rotation += dt * when (mode) {
             Mode.OFF -> 0.08f
@@ -82,91 +104,153 @@ class ParticleOrbView @JvmOverloads constructor(context: Context, attrs: Attribu
         val cy = height / 2f
         val breathe = 1f + 0.03f * sin(time * 1.6f)
         val radius = min(width, height) * 0.30f * breathe * (1f + 0.22f * level)
+        val color = Color.rgb(red.toInt(), green.toInt(), blue.toInt())
 
         drawGlow(canvas, cx, cy, radius)
-        drawRings(canvas, cx, cy, radius, mode)
-        drawParticles(canvas, cx, cy, radius, mode)
+        drawRings(canvas, cx, cy, radius, mode, color)
+        drawParticles(canvas, cx, cy, radius, mode, color)
 
-        if (isShown) postInvalidateOnAnimation()
+        scheduleNextFrame(mode)
     }
 
-    private fun drawParticles(canvas: Canvas, cx: Float, cy: Float, radius: Float, mode: Mode) {
+    private fun scheduleNextFrame(mode: Mode) {
+        if (!running) return
+        val idle = mode == Mode.OFF || mode == Mode.WAITING
+        postOnAnimationDelayed(frame, if (idle) IDLE_FRAME_MS else ACTIVE_FRAME_MS)
+    }
+
+    private fun drawParticles(canvas: Canvas, cx: Float, cy: Float, radius: Float, mode: Mode, color: Int) {
         val cosR = cos(rotation)
         val sinR = sin(rotation)
-        val tilt = 0.35f
-        val cosT = cos(tilt)
-        val sinT = sin(tilt)
-        val color = Color.rgb(red.toInt(), green.toInt(), blue.toInt())
-        for (p in particles) {
+        layerCount.fill(0)
+        for (i in 0 until COUNT) {
             // Waves across the surface follow the voice.
             val wave = when (mode) {
-                Mode.LISTENING, Mode.SPEAKING -> 1f + level * 0.35f * sin(p.phase + time * 7f * p.speed)
-                Mode.THINKING -> 1f + 0.06f * sin(p.phase + time * 4f)
-                else -> 1f + 0.015f * sin(p.phase + time * p.speed)
+                Mode.LISTENING, Mode.SPEAKING -> 1f + level * 0.35f * sin(phase[i] + time * 7f * speed[i])
+                Mode.THINKING -> 1f + 0.06f * sin(phase[i] + time * 4f)
+                else -> 1f + 0.015f * sin(phase[i] + time * speed[i])
             }
-            val x1 = p.x * cosR + p.z * sinR
-            val z1 = -p.x * sinR + p.z * cosR
-            val y2 = p.y * cosT - z1 * sinT
-            val z2 = p.y * sinT + z1 * cosT
+            val x1 = baseX[i] * cosR + baseZ[i] * sinR
+            val z1 = -baseX[i] * sinR + baseZ[i] * cosR
+            val y2 = baseY[i] * COS_TILT - z1 * SIN_TILT
+            val z2 = baseY[i] * SIN_TILT + z1 * COS_TILT
             val perspective = 2.6f / (2.6f - z2)
-            val px = cx + x1 * radius * wave * perspective
-            val py = cy + y2 * radius * wave * perspective
-            val depth = (z2 + 1f) / 2f
-            dotPaint.color = color
-            dotPaint.alpha = (40 + 215 * depth).toInt()
-            canvas.drawCircle(px, py, density * (0.7f + 1.6f * depth) * perspective, dotPaint)
+            val layer = ((z2 + 1f) / 2f * LAYERS).toInt().coerceIn(0, LAYERS - 1)
+            val n = layerCount[layer]
+            layerPoints[layer][n] = cx + x1 * radius * wave * perspective
+            layerPoints[layer][n + 1] = cy + y2 * radius * wave * perspective
+            layerCount[layer] = n + 2
+        }
+        for (layer in 0 until LAYERS) {
+            if (layerCount[layer] == 0) continue
+            val depth = (layer + 0.5f) / LAYERS
+            val paint = layerPaints[layer]
+            paint.color = color
+            paint.alpha = (40 + 215 * depth).toInt()
+            // Diameter of the old per-particle circles at this depth.
+            paint.strokeWidth = 2f * density * (0.7f + 1.6f * depth) * (2.6f / (2.6f - (depth * 2f - 1f)))
+            canvas.drawPoints(layerPoints[layer], 0, layerCount[layer], paint)
         }
     }
 
     private fun drawGlow(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
-        val key = (red.toInt() shl 16) or (green.toInt() shl 8) or blue.toInt() xor radius.toInt()
-        if (key != glowKey) {
-            glowKey = key
-            val core = Color.argb(110, red.toInt(), green.toInt(), blue.toInt())
-            glowPaint.shader = RadialGradient(cx, cy, radius * 1.5f, intArrayOf(core, Color.TRANSPARENT), null, Shader.TileMode.CLAMP)
+        // The gradient is built at one size and scaled; rebuilt only when the colour visibly changes.
+        val quantized = Color.rgb(red.toInt() and 0xF8, green.toInt() and 0xF8, blue.toInt() and 0xF8)
+        val base = min(width, height) * 0.30f * 1.5f
+        if (quantized != glowColor || base != glowRadius) {
+            glowColor = quantized
+            glowRadius = base
+            val core = Color.argb(110, Color.red(quantized), Color.green(quantized), Color.blue(quantized))
+            glowPaint.shader = RadialGradient(0f, 0f, base, intArrayOf(core, Color.TRANSPARENT), null, Shader.TileMode.CLAMP)
         }
-        canvas.drawCircle(cx, cy, radius * 1.5f, glowPaint)
+        val scale = radius * 1.5f / base
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.scale(scale, scale)
+        canvas.drawCircle(0f, 0f, base, glowPaint)
+        canvas.restore()
     }
 
-    private fun drawRings(canvas: Canvas, cx: Float, cy: Float, radius: Float, mode: Mode) {
-        val color = Color.rgb(red.toInt(), green.toInt(), blue.toInt())
-        ringPaint.color = color
+    private fun drawRings(canvas: Canvas, cx: Float, cy: Float, radius: Float, mode: Mode, color: Int) {
         haloPaint.color = color
         haloPaint.alpha = 50
         haloPaint.strokeWidth = density
         canvas.drawCircle(cx, cy, radius * 1.18f, haloPaint)
 
         // Two dashed HUD rings turning in opposite directions.
-        listOf(1.32f to 1f, 1.45f to -0.6f).forEachIndexed { index, (scale, direction) ->
-            val r = radius * scale
+        for (index in 0..1) {
+            val r = radius * if (index == 0) 1.32f else 1.45f
+            val direction = if (index == 0) 1f else -0.6f
             arc.set(cx - r, cy - r, cx + r, cy + r)
-            ringPaint.strokeWidth = density * (if (index == 0) 2.2f else 1.2f)
-            ringPaint.alpha = if (mode == Mode.OFF) 50 else 150 - index * 50
-            ringPaint.maskFilter = if (index == 0) ringGlow else null
             val segments = if (index == 0) 6 else 24
             val sweep = 360f / segments
-            for (s in 0 until segments) {
-                canvas.drawArc(arc, ringAngle * direction + s * sweep, sweep * (if (index == 0) 0.6f else 0.3f), false, ringPaint)
+            val dash = sweep * if (index == 0) 0.6f else 0.3f
+            val alpha = if (mode == Mode.OFF) 50 else 150 - index * 50
+            ringPaint.color = color
+            if (index == 0) {
+                // A wide faint stroke under the ring gives the soft glow a blur filter used to, at a fraction of the cost.
+                ringPaint.strokeWidth = density * 6f
+                ringPaint.alpha = alpha / 4
+                for (s in 0 until segments) canvas.drawArc(arc, ringAngle * direction + s * sweep, dash, false, ringPaint)
             }
+            ringPaint.strokeWidth = density * if (index == 0) 2.2f else 1.2f
+            ringPaint.alpha = alpha
+            for (s in 0 until segments) canvas.drawArc(arc, ringAngle * direction + s * sweep, dash, false, ringPaint)
         }
     }
 
-    private fun colorFor(mode: Mode): Triple<Float, Float, Float> = when (mode) {
-        Mode.OFF -> Triple(70f, 100f, 130f)
-        Mode.WAITING -> Triple(0f, 200f, 255f)
-        Mode.LISTENING -> Triple(0f, 255f, 210f)
-        Mode.THINKING -> Triple(170f, 120f, 255f)
-        Mode.SPEAKING -> Triple(120f, 235f, 255f)
+    private fun targetRed(mode: Mode) = when (mode) {
+        Mode.OFF -> 70f
+        Mode.THINKING -> 170f
+        Mode.SPEAKING -> 120f
+        else -> 0f
+    }
+
+    private fun targetGreen(mode: Mode) = when (mode) {
+        Mode.OFF -> 100f
+        Mode.WAITING -> 200f
+        Mode.LISTENING -> 255f
+        Mode.THINKING -> 120f
+        Mode.SPEAKING -> 235f
+    }
+
+    private fun targetBlue(mode: Mode) = when (mode) {
+        Mode.OFF -> 130f
+        Mode.LISTENING -> 210f
+        else -> 255f
+    }
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        setRunning(visibility == VISIBLE && isShown)
     }
 
     override fun onVisibilityChanged(changedView: View, visibility: Int) {
         super.onVisibilityChanged(changedView, visibility)
-        lastFrameNanos = 0L
-        if (visibility == VISIBLE) postInvalidateOnAnimation()
+        setRunning(isShown && windowVisibility == VISIBLE)
+    }
+
+    override fun onDetachedFromWindow() {
+        setRunning(false)
+        super.onDetachedFromWindow()
+    }
+
+    /** Animates only while someone can see it; nothing runs behind other screens or with the screen off. */
+    private fun setRunning(run: Boolean) {
+        if (run == running) return
+        running = run
+        removeCallbacks(frame)
+        lastFrameMs = 0L
+        if (run) invalidate()
     }
 
     companion object {
         private const val COUNT = 650
+        private const val LAYERS = 6
+        private const val ACTIVE_FRAME_MS = 33L
+        private const val IDLE_FRAME_MS = 66L
         private val GOLDEN_ANGLE = (PI * (3.0 - sqrt(5.0))).toFloat()
+        private val COS_TILT = cos(0.35f)
+        private val SIN_TILT = sin(0.35f)
     }
 }

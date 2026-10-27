@@ -17,7 +17,10 @@ import com.google.ai.edge.litertlm.OpenApiTool
 import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.ThinkingConfig
 import com.google.ai.edge.litertlm.tool
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.runBlocking
+import kotlin.concurrent.thread
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import com.google.ai.edge.litertlm.Engine as LiteRtEngine
@@ -60,15 +63,36 @@ class OfflineEngine(
         conversation = null
     }
 
-    /** Frees the model's memory, e.g. after it failed. */
+    /** Frees the model's memory (about 1.5 GB for Gemma), after it failed or sat unused. */
     @Synchronized
     private fun unload() {
+        conversation?.close()
+        conversation = null
         engine?.close()
         engine = null
         loadedModel = null
     }
 
+    // Keeping the model loaded between chats squeezes the phone's memory and makes everything lag,
+    // so it's released after a few idle minutes. Reloading takes a few seconds.
+    private val idle = Handler(Looper.getMainLooper())
+    private val unloadWhenIdle = Runnable { thread(name = "blecky-unload") { if (!busy) unload() } }
+
+    @Volatile
+    private var busy = false
+
     override suspend fun ask(text: String, key: String, ctx: ToolContext, fromScheduler: Boolean): String {
+        busy = true
+        idle.removeCallbacks(unloadWhenIdle)
+        try {
+            return answer(text, ctx, fromScheduler)
+        } finally {
+            busy = false
+            idle.postDelayed(unloadWhenIdle, IDLE_UNLOAD_MS)
+        }
+    }
+
+    private suspend fun answer(text: String, ctx: ToolContext, fromScheduler: Boolean): String {
         lastTurnFailed = false
         val words = Persona.unstamp(text)
         val model = models.active(settings.offlineModel)
@@ -99,7 +123,8 @@ class OfflineEngine(
             try {
                 currentCtx = ctx
                 lastToolResult = null
-                val reply = conversationFor(candidate).sendMessage(prompt)
+                // Under the same lock as unload(), so an idle release can't free the model mid-answer.
+                val reply = synchronized(this) { conversationFor(candidate).sendMessage(prompt) }
                 return reply.contents.contents.filterIsInstance<Content.Text>().joinToString(" ") { it.text }
                     .replace(Regex("(?s)<think>.*?</think>"), "")
                     .trim()
@@ -182,6 +207,8 @@ class OfflineEngine(
     }
 
     companion object {
+        private const val IDLE_UNLOAD_MS = 3 * 60 * 1000L
+
         /**
          * "call" is a keyword in Gemma's tool-call format and breaks its parser (seen in testing),
          * so tools get names that can't clash.

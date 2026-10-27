@@ -8,6 +8,8 @@ import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsSupertonicModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
@@ -94,6 +96,28 @@ class NeuralVoices(private val context: Context) {
 
     /** Speaks [text] with [pack] in [language] ("en" or "hi"); blocks until it has been heard. */
     fun speak(text: String, pack: Pack, speed: Float = 1.0f, language: String = "en") {
+        idle.removeCallbacks(releaseWhenIdle)
+        try {
+            synthesize(text, pack, speed, language)
+        } finally {
+            idle.postDelayed(releaseWhenIdle, IDLE_RELEASE_MS)
+        }
+    }
+
+    // The voice model is freed after a quiet spell so it isn't holding memory all day.
+    private val idle = Handler(Looper.getMainLooper())
+    private val releaseWhenIdle = Runnable { thread(name = "blecky-voice-release") { release() } }
+
+    @Synchronized
+    private fun release() {
+        tts?.release()
+        tts = null
+        loadedFolder = null
+    }
+
+    // Holds the lock while speaking so the idle release can never free the model mid-sentence.
+    @Synchronized
+    private fun synthesize(text: String, pack: Pack, speed: Float, language: String) {
         val engine = engine(pack)
         val player = PcmPlayer(engine.sampleRate(), floatSamples = true)
         current = player
@@ -188,6 +212,7 @@ class NeuralVoices(private val context: Context) {
     private fun root() = File(context.filesDir, "voices")
 
     companion object {
+        private const val IDLE_RELEASE_MS = 10 * 60 * 1000L
         private const val KOKORO = "kokoro-int8-en-v0_19"
         private const val SUPERTONIC = "sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
 

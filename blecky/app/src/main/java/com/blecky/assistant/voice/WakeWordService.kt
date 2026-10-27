@@ -28,8 +28,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.vosk.Recognizer
-import org.vosk.android.RecognitionListener
-import org.vosk.android.SpeechService
 
 /**
  * Foreground service that keeps the microphone open (screen on or off) and waits for
@@ -39,7 +37,7 @@ import org.vosk.android.SpeechService
 class WakeWordService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var recognizer: Recognizer? = null
-    private var speech: SpeechService? = null
+    private var mic: GatedWakeListener? = null
     private var ownerVoice: FloatArray? = null
     private var session: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -57,34 +55,28 @@ class WakeWordService : Service() {
         }
     }
 
-    private val wakeListener = object : RecognitionListener {
-        override fun onPartialResult(hypothesis: String?) = check(hypothesis, isFinal = false)
-        override fun onResult(hypothesis: String?) = check(hypothesis, isFinal = true)
-        override fun onFinalResult(hypothesis: String?) = Unit
-        override fun onTimeout() = Unit
-        override fun onError(exception: Exception?) {
-            Log.w(TAG, "Wake listener failed; restarting", exception)
-            stopWakeListener()
-            scope.launch {
-                delay(2_000)
-                startWakeListener()
-            }
+    private fun onMicError(exception: Exception) {
+        Log.w(TAG, "Wake listener failed; restarting", exception)
+        stopWakeListener()
+        scope.launch {
+            delay(2_000)
+            startWakeListener()
         }
+    }
 
-        private fun check(hypothesis: String?, isFinal: Boolean) {
-            // Only finished phrases carry word confidences (and voiceprints), so ignore partials.
-            if (!isFinal || System.currentTimeMillis() < ignoreUntil) return
-            val result = hypothesis?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
-            if (!WakeWord.matches(WakeWord.words(result), blecky.settings.wakeOnNameAlone)) return
-            val owner = ownerVoice
-            if (owner == null) {
-                startSession()
-                return
-            }
-            val score = SpeakerProfile.fromResult(result)?.let { SpeakerProfile.similarity(it, owner) } ?: 0f
-            blecky.settings.lastVoiceScore = score
-            if (score >= blecky.settings.voiceThreshold) startSession() else Log.i(TAG, "Wake phrase from another voice ($score)")
+    /** A finished phrase from the wake recognizer; only these carry word confidences and voiceprints. */
+    private fun checkWakePhrase(hypothesis: String) {
+        if (System.currentTimeMillis() < ignoreUntil) return
+        val result = runCatching { JSONObject(hypothesis) }.getOrNull() ?: return
+        if (!WakeWord.matches(WakeWord.words(result), blecky.settings.wakeOnNameAlone)) return
+        val owner = ownerVoice
+        if (owner == null) {
+            startSession()
+            return
         }
+        val score = SpeakerProfile.fromResult(result)?.let { SpeakerProfile.similarity(it, owner) } ?: 0f
+        blecky.settings.lastVoiceScore = score
+        if (score >= blecky.settings.voiceThreshold) startSession() else Log.i(TAG, "Wake phrase from another voice ($score)")
     }
 
     override fun onBind(intent: Intent?) = null
@@ -138,7 +130,7 @@ class WakeWordService : Service() {
 
     @SuppressLint("WakelockTimeout")
     private fun startWakeListener() {
-        if (speech != null || session?.isActive == true) return
+        if (mic != null || session?.isActive == true) return
         scope.launch {
             val settings = blecky.settings
             val owner = SpeakerProfile.decode(settings.voiceProfile)?.takeIf { settings.voiceLock }
@@ -155,13 +147,14 @@ class WakeWordService : Service() {
                 stopSelf()
                 return@launch
             }
-            if (speech != null || session?.isActive == true) {
+            if (mic != null || session?.isActive == true) {
                 rec.close()
                 return@launch
             }
             ownerVoice = owner
             recognizer = rec
-            speech = SpeechService(rec, SAMPLE_RATE).also { it.startListening(wakeListener) }
+            // Only sends sound to the recognizer when someone's talking, so silence costs almost nothing.
+            mic = GatedWakeListener(rec, ::checkWakePhrase, ::onMicError).also { it.start() }
             VoiceState.mode = VoiceState.Mode.WAITING
             // Held only while waiting for the wake word, so the CPU keeps processing audio with the screen off.
             wakeLock = getSystemService(PowerManager::class.java)
@@ -171,11 +164,9 @@ class WakeWordService : Service() {
     }
 
     private fun stopWakeListener() {
-        speech?.let {
-            it.stop()
-            it.shutdown()
-        }
-        speech = null
+        // Stop the microphone thread before freeing the recognizer it's using.
+        mic?.stop()
+        mic = null
         recognizer?.close()
         recognizer = null
         wakeLock?.takeIf { it.isHeld }?.release()
