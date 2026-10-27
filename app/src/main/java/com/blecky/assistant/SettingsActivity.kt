@@ -417,7 +417,7 @@ class SettingsActivity : Activity() {
             return
         }
         val voices = blecky.voice.neural
-        val voice = voices.pack("st-f2")
+        val voice = voices.pack(Prefs.DEFAULT_VOICE)
         val models = blecky.brain.offline.models
         val model = OfflineModels.recommended(models.phoneRamGb())
         runDownload({

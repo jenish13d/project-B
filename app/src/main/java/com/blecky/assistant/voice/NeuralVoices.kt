@@ -194,10 +194,10 @@ class NeuralVoices(private val context: Context) {
         val PACKS = listOf(
             // Supertonic 3 (github.com/supertone-inc/supertonic, MIT): natural and about 5x faster
             // than real time on two CPU cores in testing, so it suits budget phones. Voices 1-5 are female.
-            Pack("st-f2", "Supertonic Maya (natural, fast, also Hindi) ★", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 1, speaksHindi = true),
+            Pack("st-f4", "Supertonic Zoe (natural, fast, also Hindi) ★", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 3, speaksHindi = true),
+            Pack("st-f2", "Supertonic Maya (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 1, speaksHindi = true),
             Pack("st-f1", "Supertonic Ava (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 0, speaksHindi = true),
             Pack("st-f3", "Supertonic Lily (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 2, speaksHindi = true),
-            Pack("st-f4", "Supertonic Zoe (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 3, speaksHindi = true),
             Pack("st-f5", "Supertonic Iris (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 4, speaksHindi = true),
             Pack("jenny", "Jenny, British (fast)", "vits-piper-en_GB-jenny_dioco-medium", Kind.PIPER, 67),
             Pack("amy", "Amy, American (fast)", "vits-piper-en_US-amy-medium", Kind.PIPER, 67),

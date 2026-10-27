@@ -105,8 +105,16 @@ class Settings(context: Context) {
 
     /** Chosen offline neural voice (see NeuralVoices.PACKS). */
     var voicePack: String
-        get() = prefs.getString("voice_pack", "st-f2") ?: "st-f2"
+        get() = prefs.getString("voice_pack", DEFAULT_VOICE) ?: DEFAULT_VOICE
         set(value) = prefs.edit().putString("voice_pack", value).apply()
+
+    init {
+        // The user picked Zoe (F4) after v8 shipped with Maya (F2) as the default; move them over once.
+        if (!prefs.getBoolean("voice_default_f4", false)) {
+            if (prefs.getString("voice_pack", null) == "st-f2") voicePack = DEFAULT_VOICE
+            prefs.edit().putBoolean("voice_default_f4", true).apply()
+        }
+    }
 
     /** How long Blecky keeps listening for a follow-up before going back to waiting for her name. */
     var followUpSeconds: Int
@@ -123,6 +131,7 @@ class Settings(context: Context) {
         const val PROVIDER_AUTO = "auto"
         const val PROVIDER_OFFLINE = "offline"
         const val DEFAULT_OFFLINE_MODEL = "gemma4-e2b"
+        const val DEFAULT_VOICE = "st-f4"
         val FREE_PROVIDERS = listOf(PROVIDER_GEMINI, PROVIDER_GROQ, PROVIDER_CEREBRAS, PROVIDER_OPENROUTER)
         const val DEFAULT_VOICE_THRESHOLD = 0.45f
     }

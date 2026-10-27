@@ -94,7 +94,7 @@ Blecky can:
       for apps installed from an APK file. If it says "restricted setting" or "not allowed", open
       **Settings → Apps → Blecky**, tap **⋮** (top right) → **Allow restricted settings**, then try again.
       The ⋮ option only appears after Android has blocked it once. The app walks you through this.
-4. To pick a different voice, go to **Settings → Voice**. Supertonic Maya, Ava, Lily, Zoe and Iris are
+4. To pick a different voice, go to **Settings → Voice**. Supertonic Zoe (the default), Maya, Ava, Lily and Iris are
    natural and fast on budget phones, and speak Hindi too. Jenny, Amy and Hannah (Piper) are a little
    more robotic. Bella, Sky and Emma (Kokoro) sound very human but are too slow for budget phones.
 5. Optional, under **Settings**: online AI keys, then teach her your voice and turn on the voice lock, try other voices
