@@ -27,20 +27,20 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import org.vosk.Model
 import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 
 /**
  * Foreground service that keeps the microphone open (screen on or off) and waits for
- * "Hey Blecky" using an offline recognizer, then runs a spoken conversation.
+ * "Hey Blecky" or "Bleck" using an offline recognizer, optionally checks it's the owner's voice,
+ * then runs a spoken conversation. It also lets Blecky start conversations itself (check-ins).
  */
 class WakeWordService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var model: Model? = null
     private var recognizer: Recognizer? = null
     private var speech: SpeechService? = null
+    private var ownerVoice: FloatArray? = null
     private var session: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
@@ -55,8 +55,8 @@ class WakeWordService : Service() {
     }
 
     private val wakeListener = object : RecognitionListener {
-        override fun onPartialResult(hypothesis: String?) = check(hypothesis, "partial")
-        override fun onResult(hypothesis: String?) = check(hypothesis, "text")
+        override fun onPartialResult(hypothesis: String?) = check(hypothesis, isFinal = false)
+        override fun onResult(hypothesis: String?) = check(hypothesis, isFinal = true)
         override fun onFinalResult(hypothesis: String?) = Unit
         override fun onTimeout() = Unit
         override fun onError(exception: Exception?) {
@@ -68,9 +68,19 @@ class WakeWordService : Service() {
             }
         }
 
-        private fun check(hypothesis: String?, field: String) {
-            val heard = hypothesis?.let { runCatching { JSONObject(it).optString(field) }.getOrNull() }
-            if (WakeWord.matches(heard)) startSession(fromWake = true)
+        private fun check(hypothesis: String?, isFinal: Boolean) {
+            val result = hypothesis?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return
+            if (!WakeWord.matches(result.optString(if (isFinal) "text" else "partial"), isFinal)) return
+            val owner = ownerVoice
+            if (owner == null) {
+                startSession()
+                return
+            }
+            // The voiceprint only comes with the final result, so wait for it.
+            if (!isFinal) return
+            val score = SpeakerProfile.fromResult(result)?.let { SpeakerProfile.similarity(it, owner) } ?: 0f
+            blecky.settings.lastVoiceScore = score
+            if (score >= blecky.settings.voiceThreshold) startSession() else Log.i(TAG, "Wake phrase from another voice ($score)")
         }
     }
 
@@ -97,8 +107,9 @@ class WakeWordService : Service() {
                 blecky.settings.listening = true
                 startWakeListener()
             }
-            ACTION_TALK -> startSession(fromWake = false)
+            ACTION_TALK -> startSession(showScreen = false)
             ACTION_SAY -> intent?.getStringExtra(EXTRA_TEXT)?.let(::announce)
+            ACTION_CHECK_IN -> intent?.getStringExtra(EXTRA_TEXT)?.let { startSession(checkIn = it) }
         }
         return START_STICKY
     }
@@ -108,7 +119,6 @@ class WakeWordService : Service() {
         scope.cancel()
         blecky.voice.stopSpeaking()
         stopWakeListener()
-        model?.close()
         super.onDestroy()
     }
 
@@ -126,18 +136,25 @@ class WakeWordService : Service() {
     private fun startWakeListener() {
         if (speech != null || session?.isActive == true) return
         scope.launch {
-            val loaded = model ?: withContext(Dispatchers.IO) {
-                runCatching { Model(ModelInstaller.modelDir(this@WakeWordService).absolutePath) }
-                    .onFailure { Log.e(TAG, "Could not load wake word model", it) }
-                    .getOrNull()
-            }?.also { model = it }
-            if (loaded == null) {
-                ConversationLog.blecky("My offline voice model is missing. Open Blecky and tap Start listening to download it.")
+            val settings = blecky.settings
+            val owner = SpeakerProfile.decode(settings.voiceProfile)?.takeIf { settings.voiceLock }
+            val rec = withContext(Dispatchers.IO) {
+                runCatching {
+                    Recognizer(ModelInstaller.speech(this@WakeWordService), SAMPLE_RATE, WakeWord.GRAMMAR).apply {
+                        if (owner != null) setSpeakerModel(ModelInstaller.speaker(this@WakeWordService))
+                    }
+                }.onFailure { Log.e(TAG, "Could not load wake word models", it) }.getOrNull()
+            }
+            if (rec == null) {
+                ConversationLog.blecky("My offline voice models are missing. Open Blecky and tap Start listening to download them.")
                 stopSelf()
                 return@launch
             }
-            if (speech != null || session?.isActive == true) return@launch
-            val rec = Recognizer(loaded, SAMPLE_RATE, WakeWord.GRAMMAR)
+            if (speech != null || session?.isActive == true) {
+                rec.close()
+                return@launch
+            }
+            ownerVoice = owner
             recognizer = rec
             speech = SpeechService(rec, SAMPLE_RATE).also { it.startListening(wakeListener) }
             // Held only while waiting for the wake word, so the CPU keeps processing audio with the screen off.
@@ -159,20 +176,30 @@ class WakeWordService : Service() {
         wakeLock = null
     }
 
-    private fun startSession(fromWake: Boolean) {
+    /**
+     * A spoken conversation. Woken by the user, Blecky greets them; for a [checkIn], Blecky
+     * opens with something it wanted to say. Either way it keeps listening for follow-ups.
+     */
+    private fun startSession(showScreen: Boolean = true, checkIn: String? = null) {
         if (session?.isActive == true) return
         stopWakeListener()
         session = scope.launch {
             try {
-                if (fromWake) showOnScreen()
-                blecky.voice.beep()
-                delay(300)
+                if (showScreen) showOnScreen()
+                val opener = if (checkIn != null) {
+                    blecky.brain.ask(checkIn, voiceChannel, fromScheduler = true)
+                } else {
+                    WakeWord.greeting(blecky.settings.userName)
+                }
+                ConversationLog.blecky(opener)
+                blecky.voice.speak(opener)
                 while (isActive) {
                     val heard = blecky.voice.listen() ?: break
                     ConversationLog.user(heard)
                     if (WakeWord.isGoodbye(heard)) {
-                        ConversationLog.blecky("Okay, bye!")
-                        blecky.voice.speak("Okay, bye!")
+                        val bye = listOf("Anytime.", "Okay, I'm here if you need me.", "Talk soon.").random()
+                        ConversationLog.blecky(bye)
+                        blecky.voice.speak(bye)
                         break
                     }
                     val reply = blecky.brain.ask(heard, voiceChannel)
@@ -223,7 +250,7 @@ class WakeWordService : Service() {
         return Notification.Builder(this, BleckyApp.CHANNEL_LISTENING)
             .setSmallIcon(R.drawable.ic_mic)
             .setContentTitle("Blecky is listening")
-            .setContentText("Say “Hey Blecky” any time")
+            .setContentText("Say “Hey Blecky” or “Bleck” any time")
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())
@@ -238,6 +265,7 @@ class WakeWordService : Service() {
         private const val ACTION_LISTEN = "listen"
         private const val ACTION_TALK = "talk"
         private const val ACTION_SAY = "say"
+        private const val ACTION_CHECK_IN = "check_in"
         private const val ACTION_STOP = "stop"
         private const val EXTRA_TEXT = "text"
 
@@ -256,8 +284,14 @@ class WakeWordService : Service() {
             context.startForegroundService(intent(context, ACTION_TALK))
         }
 
+        /** Speaks [text] if the service is already running. */
         fun say(context: Context, text: String) {
             context.startService(intent(context, ACTION_SAY).putExtra(EXTRA_TEXT, text))
+        }
+
+        /** Blecky starts a conversation about [prompt] if the service is already running. */
+        fun checkIn(context: Context, prompt: String) {
+            context.startService(intent(context, ACTION_CHECK_IN).putExtra(EXTRA_TEXT, prompt))
         }
 
         fun stop(context: Context) {

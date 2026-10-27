@@ -6,12 +6,26 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Blecky"
-        android:textSize="28sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Blecky"
+            android:textSize="28sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/toggle_setup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Settings" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/status"
@@ -20,8 +34,13 @@
         android:paddingVertical="4dp"
         android:textSize="15sp" />
 
-    <LinearLayout
+    <ScrollView
         android:id="@+id/setup"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
@@ -70,7 +89,52 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="4. Let Blecky read notifications (emails, messages)" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="12dp"
+            android:text="Make Blecky yours"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/enroll_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Teach Blecky my voice" />
+
+        <Button
+            android:id="@+id/voice_lock"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Only wake for my voice: off" />
+
+        <Button
+            android:id="@+id/voice_strictness"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Voice match: normal" />
+
+        <Button
+            android:id="@+id/change_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Try another voice for Blecky" />
+
+        <Button
+            android:id="@+id/check_in_time"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Daily check-in: 09:00" />
+
+        <Button
+            android:id="@+id/memories"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="What Blecky remembers about me" />
     </LinearLayout>
+    </ScrollView>
 
     <Button
         android:id="@+id/toggle_listening"

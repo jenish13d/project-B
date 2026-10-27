@@ -11,13 +11,28 @@ class WakeWordTest {
         assertTrue(WakeWord.matches("hey blackie"))
         assertTrue(WakeWord.matches("[unk] hey becky"))
         assertTrue(WakeWord.matches("Okay Blackie!"))
+        assertTrue(WakeWord.matches("hey bleck", isFinal = false))
+    }
+
+    @Test
+    fun `wakes on bleck said on its own, but only once the phrase is finished`() {
+        assertTrue(WakeWord.matches("bleck"))
+        assertTrue(WakeWord.matches("black"))
+        assertTrue(WakeWord.matches("[unk] bleck"))
+        assertFalse(WakeWord.matches("bleck", isFinal = false))
+        assertFalse(WakeWord.matches("black [unk]"))
+    }
+
+    @Test
+    fun `greets by name when known`() {
+        assertTrue(WakeWord.greeting("Jai").contains("Jai"))
+        assertFalse(WakeWord.greeting("").contains("%s"))
     }
 
     @Test
     fun `ignores other speech`() {
         assertFalse(WakeWord.matches(""))
         assertFalse(WakeWord.matches(null))
-        assertFalse(WakeWord.matches("blackie"))
         assertFalse(WakeWord.matches("hey blackberry"))
         assertFalse(WakeWord.matches("[unk]"))
     }

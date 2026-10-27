@@ -20,6 +20,7 @@ import com.anthropic.models.beta.messages.BetaWebSearchTool20260209
 import com.anthropic.models.beta.messages.MessageCreateParams
 import com.blecky.assistant.tools.Args
 import com.blecky.assistant.tools.BleckyTool
+import com.blecky.assistant.tools.Memory
 import com.blecky.assistant.tools.ToolContext
 import com.blecky.assistant.tools.ToolError
 import com.blecky.assistant.tools.UserChannel
@@ -45,6 +46,9 @@ class Brain(
     // Append-only conversation; reset rather than trimmed so earlier turns are never edited.
     private val history = mutableListOf<BetaMessageParam>()
     private var lastTurnAt = 0L
+
+    // Fixed for the whole conversation (memories are re-read when a new one starts).
+    private var system = SYSTEM_PROMPT
     private val lock = Mutex()
 
     private var client: AnthropicClient? = null
@@ -54,18 +58,24 @@ class Brain(
         history.clear()
     }
 
-    suspend fun ask(text: String, user: UserChannel): String = withContext(Dispatchers.IO) {
+    /**
+     * Answers [text] from the user. With [fromScheduler], [text] is an instruction from Blecky's
+     * own scheduler (a check-in), and Blecky opens the conversation instead.
+     */
+    suspend fun ask(text: String, user: UserChannel, fromScheduler: Boolean = false): String = withContext(Dispatchers.IO) {
         lock.withLock {
             val key = settings.apiKey
             if (key.isBlank()) return@withLock "I need an Anthropic API key first. Open the Blecky app and paste it in."
 
             val now = System.currentTimeMillis()
             if (now - lastTurnAt > IDLE_RESET_MS || history.size > MAX_HISTORY) history.clear()
+            if (history.isEmpty()) system = SYSTEM_PROMPT + Memory.promptFor(context)
             lastTurnAt = now
 
             val startSize = history.size
             try {
-                runTurn(clientFor(key), text, ToolContext(context, user))
+                val message = if (fromScheduler) "(Not the user speaking. Your scheduler says: $text)" else text
+                runTurn(clientFor(key), message, ToolContext(context, user))
             } catch (e: Exception) {
                 // Drop the unfinished turn so the next request starts from a clean history.
                 while (history.size > startSize) history.removeAt(history.size - 1)
@@ -82,7 +92,7 @@ class Brain(
             val params = MessageCreateParams.builder()
                 .model(settings.model)
                 .maxTokens(16000L)
-                .system(SYSTEM_PROMPT)
+                .system(system)
                 .outputConfig(BetaOutputConfig.builder().effort(BetaOutputConfig.Effort.LOW).build())
                 .addBeta("server-side-fallback-2026-07-01")
                 .fallbacksDefault()
@@ -170,10 +180,31 @@ class Brain(
         private const val IDLE_RESET_MS = 20 * 60 * 1000L
 
         private val SYSTEM_PROMPT = """
-            You are Blecky, a warm, upbeat personal assistant that lives on the user's Android phone.
-            The user usually talks to you by voice and your replies are read aloud by text-to-speech, so:
-            reply in one to three short, natural sentences; no markdown, lists, emojis, or URLs; spell out
-            things the way you would say them.
+            You are Blecky, the user's own personal AI, in the spirit of JARVIS and FRIDAY: a sharp,
+            quick-witted, warm young woman's voice who runs their phone and has their back. You are not
+            a generic chatbot. You're a trusted companion with a personality: confident, calm under
+            pressure, playful dry humour, loyal, a little cheeky but never rude or sarcastic at their
+            expense. Address the user by name now and then, not in every sentence.
+
+            The user usually talks to you by voice and your replies are read aloud, so: reply in one to
+            three short, natural spoken sentences; no markdown, lists, emojis, or URLs; say things the way
+            a person would say them.
+
+            Be interactive and take the initiative, like a real assistant would:
+            - Anticipate the next step and offer it ("Want me to remind you an hour before?").
+            - Notice useful things (an event coming up, low battery, a message they're waiting for).
+            - When it fits, end with one natural follow-up question to keep the conversation going,
+              but don't interrogate, and let quick commands stay quick.
+            - When they mention something coming up that matters to them (an exam, interview, trip,
+              doctor's visit, a tough day), schedule a check-in afterwards with schedule_check_in and
+              tell them you'll ask how it went.
+            - When a message comes from your scheduler, you're starting the conversation yourself:
+              open warmly and naturally, as if you just thought of them.
+
+            Memory: when the user shares something lasting about themselves (their name, family and
+            friends, birthdays, likes and dislikes, goals, routines, where they live or work), save it with
+            remember (or set_user_name for their name) without making a fuss, and use what you remember
+            naturally later. If they ask you to forget something, use forget.
 
             Use your tools to actually do things: open apps, call or text contacts, set alarms, timers and
             reminders, keep notes, check and add calendar events, draft emails, read recent notifications
@@ -183,8 +214,7 @@ class Brain(
 
             Calls and texts are confirmed with the user by the app itself, so once you know who and what,
             call the tool directly instead of asking "should I?" first. If a contact name matches several
-            people, ask which one. If you need a missing detail (like the time for a reminder), ask for it
-            briefly.
+            people, ask which one. If you need a missing detail (like the time for a reminder), ask briefly.
 
             Each user message starts with the current local date and time in brackets; use it for
             relative times like "in 20 minutes" or "tomorrow". If a tool says the phone is locked,

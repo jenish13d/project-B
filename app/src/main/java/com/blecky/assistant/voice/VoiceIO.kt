@@ -13,6 +13,8 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
+import com.blecky.assistant.Settings
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -22,25 +24,56 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 
 /** Speech in (Android speech recognizer) and speech out (text-to-speech). */
-class VoiceIO(private val context: Context) {
+class VoiceIO(private val context: Context, private val settings: Settings) {
     private val ttsReady = CompletableDeferred<Boolean>()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
-    private val tts: TextToSpeech = TextToSpeech(context.applicationContext) { status ->
-        ttsReady.complete(status == TextToSpeech.SUCCESS)
-    }.apply {
-        setAudioAttributes(
+    private lateinit var tts: TextToSpeech
+
+    init {
+        tts = TextToSpeech(context.applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) applyVoice()
+            ttsReady.complete(status == TextToSpeech.SUCCESS)
+        }
+        tts.setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ASSISTANT)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                 .build(),
         )
-        setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String) = Unit
             override fun onDone(utteranceId: String) { pending.remove(utteranceId)?.complete(Unit) }
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String) { pending.remove(utteranceId)?.complete(Unit) }
             override fun onStop(utteranceId: String, interrupted: Boolean) { pending.remove(utteranceId)?.complete(Unit) }
         })
+    }
+
+    /** English voices installed on the phone, friendly female ones first. */
+    private fun englishVoices(): List<Voice> =
+        (runCatching { tts.voices }.getOrNull() ?: emptySet())
+            .filter { it.locale.language == "en" && TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED !in it.features }
+            .sortedWith(compareBy({ femaleRank(it.name) }, { it.isNetworkConnectionRequired }, { it.name }))
+
+    private fun applyVoice() {
+        val voices = englishVoices()
+        val chosen = voices.firstOrNull { it.name == settings.voiceName } ?: voices.firstOrNull()
+        chosen?.let { tts.voice = it }
+        // A touch brighter and quicker than the default reads as younger and friendlier.
+        tts.setPitch(1.08f)
+        tts.setSpeechRate(1.03f)
+    }
+
+    /** Switches to the next installed English voice and returns its name. */
+    suspend fun nextVoice(): String? {
+        if (!ttsReady.await()) return null
+        val voices = englishVoices()
+        if (voices.isEmpty()) return null
+        val current = voices.indexOfFirst { it.name == tts.voice?.name }
+        val next = voices[(current + 1) % voices.size]
+        settings.voiceName = next.name
+        applyVoice()
+        return next.name
     }
 
     /** Speaks [text] and returns once it has finished. */
@@ -98,4 +131,17 @@ class VoiceIO(private val context: Context) {
             )
         }
     }
+}
+
+/**
+ * Google's text-to-speech voices don't report gender, so rank known warm female voices first
+ * (US, UK, Indian and Australian English).
+ */
+internal fun femaleRank(voiceName: String): Int {
+    val preferred = listOf(
+        "en-us-x-sfg", "en-us-x-tpf", "en-us-x-iob", "en-us-x-tpc", "en-us-x-iog",
+        "en-gb-x-gba", "en-gb-x-gbc", "en-gb-x-gbg", "en-in-x-ena", "en-in-x-enc", "en-au-x-afa", "en-au-x-aua",
+    )
+    val index = preferred.indexOfFirst { voiceName.lowercase().startsWith(it) }
+    return if (index >= 0) index else preferred.size
 }

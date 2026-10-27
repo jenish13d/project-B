@@ -3,6 +3,7 @@ package com.blecky.assistant
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.TimePickerDialog
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -18,12 +19,17 @@ import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.blecky.assistant.tools.Memory
 import com.blecky.assistant.tools.NotificationReader
+import com.blecky.assistant.tools.Reminders
 import com.blecky.assistant.tools.UserChannel
 import com.blecky.assistant.voice.ModelInstaller
+import com.blecky.assistant.voice.SpeakerProfile
+import com.blecky.assistant.voice.VoiceEnrollment
 import com.blecky.assistant.voice.WakeWordService
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -35,7 +41,9 @@ class MainActivity : Activity() {
     private lateinit var scroll: ScrollView
     private lateinit var input: EditText
     private lateinit var toggle: Button
+    private lateinit var setup: View
     private var installing = false
+    private var enrollment: VoiceEnrollment? = null
 
     private val onLogChanged: () -> Unit = { renderTranscript() }
 
@@ -60,6 +68,7 @@ class MainActivity : Activity() {
         scroll = findViewById(R.id.transcript_scroll)
         input = findViewById(R.id.input)
         toggle = findViewById(R.id.toggle_listening)
+        setup = findViewById(R.id.setup)
         val keyField = findViewById<EditText>(R.id.api_key)
 
         findViewById<Button>(R.id.save_key).setOnClickListener {
@@ -86,6 +95,39 @@ class MainActivity : Activity() {
             if (WakeWordService.isRunning && blecky.settings.listening) WakeWordService.stop(this) else startListening()
             toggle.postDelayed(::refresh, 500)
         }
+        findViewById<Button>(R.id.toggle_setup).setOnClickListener {
+            setup.visibility = if (setup.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+        }
+        findViewById<Button>(R.id.enroll_voice).setOnClickListener { if (enrollment != null) enrollment?.cancel() else enrollVoice() }
+        findViewById<Button>(R.id.voice_lock).setOnClickListener {
+            if (SpeakerProfile.decode(blecky.settings.voiceProfile) == null) {
+                enrollVoice()
+            } else {
+                blecky.settings.voiceLock = !blecky.settings.voiceLock
+                restartListening()
+                refresh()
+            }
+        }
+        findViewById<Button>(R.id.voice_strictness).setOnClickListener {
+            val levels = STRICTNESS.map { it.second }
+            val next = levels.firstOrNull { it > blecky.settings.voiceThreshold + 0.001f } ?: levels.first()
+            blecky.settings.voiceThreshold = next
+            restartListening()
+            refresh()
+        }
+        findViewById<Button>(R.id.change_voice).setOnClickListener {
+            scope.launch {
+                val name = blecky.voice.nextVoice()
+                if (name == null) {
+                    toast("No English voices found. Install Google's speech engine from the Play Store.")
+                } else {
+                    toast("Voice: $name")
+                    blecky.voice.speak("Hi! I'm Blecky. How do I sound?")
+                }
+            }
+        }
+        findViewById<Button>(R.id.check_in_time).setOnClickListener { pickCheckInTime() }
+        findViewById<Button>(R.id.memories).setOnClickListener { showMemories() }
         findViewById<Button>(R.id.send).setOnClickListener { sendTyped() }
         input.setOnEditorActionListener { _, action, _ ->
             (action == EditorInfo.IME_ACTION_SEND).also { if (it) sendTyped() }
@@ -93,6 +135,8 @@ class MainActivity : Activity() {
         findViewById<View>(R.id.talk).setOnClickListener {
             if (hasMic()) WakeWordService.talk(this) else requestPermissions(RUNTIME_PERMISSIONS, 1)
         }
+        Reminders.scheduleDaily(this)
+        setup.visibility = if (blecky.settings.apiKey.isBlank() || !hasMic()) View.VISIBLE else View.GONE
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -117,6 +161,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        enrollment?.cancel()
         scope.cancel()
         super.onDestroy()
     }
@@ -137,27 +182,105 @@ class MainActivity : Activity() {
         when {
             blecky.settings.apiKey.isBlank() -> toast("Paste your Anthropic API key first")
             !hasMic() -> requestPermissions(RUNTIME_PERMISSIONS, 1)
-            !ModelInstaller.isInstalled(this) -> installModelThenListen()
+            !ModelInstaller.isInstalled(this) -> installModels { WakeWordService.listen(this) }
             else -> WakeWordService.listen(this)
         }
     }
 
-    private fun installModelThenListen() {
+    private fun restartListening() {
+        if (!WakeWordService.isRunning || !blecky.settings.listening) return
+        WakeWordService.stop(this)
+        WakeWordService.listen(this)
+    }
+
+    private fun installModels(then: () -> Unit) {
         if (installing) return
         installing = true
         scope.launch {
             try {
-                ModelInstaller.install(this@MainActivity) { pct ->
-                    runOnUiThread { status.text = "Downloading Blecky's offline ear (about 40 MB): $pct%" }
-                }
-                WakeWordService.listen(this@MainActivity)
+                ModelInstaller.install(this@MainActivity) { text -> runOnUiThread { status.text = text } }
             } catch (e: Exception) {
                 status.text = "Download failed: ${e.message}. Check your internet and try again."
                 return@launch
             } finally {
                 installing = false
             }
+            then()
             refresh()
+        }
+    }
+
+    /** Records the owner's voice a few times, then turns on the voice lock. */
+    private fun enrollVoice() {
+        if (!hasMic()) return requestPermissions(RUNTIME_PERMISSIONS, 1)
+        if (!ModelInstaller.isInstalled(this)) return installModels(::enrollVoice)
+        val wasListening = WakeWordService.isRunning && blecky.settings.listening
+        if (wasListening) WakeWordService.stop(this)
+        installing = true
+        findViewById<Button>(R.id.enroll_voice).text = "Cancel voice setup"
+        scope.launch {
+            delay(700) // let the listener release the microphone
+            val session = VoiceEnrollment(
+                this@MainActivity,
+                onPrompt = { status.text = it },
+                onDone = { voiceprint ->
+                    enrollment = null
+                    installing = false
+                    findViewById<Button>(R.id.enroll_voice).text = "Teach Blecky my voice"
+                    if (voiceprint != null) {
+                        blecky.settings.voiceProfile = SpeakerProfile.encode(voiceprint)
+                        blecky.settings.voiceLock = true
+                        toast("Got it. Blecky now only wakes for your voice.")
+                    } else {
+                        toast("Voice setup stopped")
+                    }
+                    if (wasListening) WakeWordService.listen(this@MainActivity)
+                    refresh()
+                },
+            )
+            enrollment = session
+            try {
+                session.start()
+            } catch (e: Exception) {
+                session.cancel()
+                toast("Couldn't start voice setup: ${e.message}")
+            }
+        }
+    }
+
+    private fun pickCheckInTime() {
+        val current = blecky.settings.checkInMinute.takeIf { it >= 0 } ?: (9 * 60)
+        val apply = { minute: Int ->
+            blecky.settings.checkInMinute = minute
+            Reminders.scheduleDaily(this)
+            refresh()
+        }
+        TimePickerDialog(this, { _, hour, minute -> apply(hour * 60 + minute) }, current / 60, current % 60, true).apply {
+            setButton(TimePickerDialog.BUTTON_NEUTRAL, "Turn off") { _, _ -> apply(-1) }
+            show()
+        }
+    }
+
+    private fun showMemories() {
+        scope.launch {
+            val text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Memory.promptFor(this@MainActivity).trim() }
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("What Blecky remembers")
+                .setMessage(text)
+                .setPositiveButton("OK", null)
+                .setNeutralButton("Forget everything") { _, _ ->
+                    AlertDialog.Builder(this@MainActivity)
+                        .setMessage("Delete everything Blecky remembers about you, including your name?")
+                        .setPositiveButton("Delete") { _, _ ->
+                            Memory.store(this@MainActivity).save(emptyList())
+                            blecky.settings.userName = ""
+                            blecky.brain.reset()
+                            toast("Blecky's memory is cleared")
+                        }
+                        .setNegativeButton("Keep", null)
+                        .show()
+                }
+                .show()
         }
     }
 
@@ -187,12 +310,26 @@ class MainActivity : Activity() {
             if (missing.isNotEmpty()) append("\nStill to set up: ${missing.joinToString()}.")
         }
         toggle.text = if (listening) "Stop listening" else "Start listening for “Hey Blecky”"
+
+        val settings = blecky.settings
+        val enrolled = SpeakerProfile.decode(settings.voiceProfile) != null
+        findViewById<Button>(R.id.voice_lock).text = when {
+            !enrolled -> "Only wake for my voice: teach Blecky your voice first"
+            settings.voiceLock -> "Only wake for my voice: on"
+            else -> "Only wake for my voice: off"
+        }
+        val level = STRICTNESS.minByOrNull { kotlin.math.abs(it.second - settings.voiceThreshold) }?.first ?: "normal"
+        val last = settings.lastVoiceScore.takeIf { it >= 0 }?.let { " (last try matched ${(it * 100).toInt()}%)" } ?: ""
+        findViewById<Button>(R.id.voice_strictness).text = "Voice match: $level$last"
+        findViewById<Button>(R.id.check_in_time).text = settings.checkInMinute.let {
+            if (it < 0) "Daily check-in: off" else "Daily check-in: %02d:%02d".format(it / 60, it % 60)
+        }
     }
 
     private fun renderTranscript() {
         val entries = ConversationLog.all()
         transcript.text = if (entries.isEmpty()) {
-            "Say “Hey Blecky”, wait for the beep, then ask anything: “What's on my calendar tomorrow?”, " +
+            "Say “Hey Blecky” or “Bleck”, wait for Blecky to answer, then ask anything: “What's on my calendar tomorrow?”, " +
                 "“Remind me to call Mom at 6”, “Text Sam I'm running late”, “Open YouTube”."
         } else {
             entries.joinToString("\n\n") { (if (it.fromUser) "You: " else "Blecky: ") + it.text }
@@ -211,6 +348,8 @@ class MainActivity : Activity() {
 
     companion object {
         const val EXTRA_FROM_WAKE = "from_wake"
+
+        private val STRICTNESS = listOf("relaxed" to 0.35f, "normal" to 0.45f, "strict" to 0.55f)
 
         private val RUNTIME_PERMISSIONS = buildList {
             add(Manifest.permission.RECORD_AUDIO)

@@ -8,7 +8,7 @@ import com.blecky.assistant.voice.VoiceIO
 
 class BleckyApp : Application() {
     val settings by lazy { Settings(this) }
-    val voice by lazy { VoiceIO(this) }
+    val voice by lazy { VoiceIO(this, settings) }
     val brain by lazy { Brain(this, settings, allTools()) }
 
     override fun onCreate() {
