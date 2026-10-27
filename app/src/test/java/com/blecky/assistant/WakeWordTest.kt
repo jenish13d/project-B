@@ -25,8 +25,17 @@ class WakeWordTest {
 
     @Test
     fun `greets by name when known`() {
-        assertTrue(WakeWord.greeting("Jai").contains("Jai"))
-        assertFalse(WakeWord.greeting("").contains("%s"))
+        assertTrue((1..40).any { WakeWord.greeting("Jai").contains("Jai") })
+        repeat(40) {
+            val g = WakeWord.greeting("", hour = it % 24)
+            assertFalse(g, g.contains("%s") || g.contains(" ,") || g.contains(", ?") || g.contains(", ."))
+        }
+    }
+
+    @Test
+    fun `greetings do not repeat back to back`() {
+        val said = (1..30).map { WakeWord.greeting("Jai", hour = 14) }
+        assertTrue(said.zipWithNext().none { (a, b) -> a == b })
     }
 
     @Test

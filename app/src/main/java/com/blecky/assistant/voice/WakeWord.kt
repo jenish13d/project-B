@@ -43,9 +43,37 @@ object WakeWord {
 
     fun isGoodbye(heard: String): Boolean = GOODBYE.matches(heard.lowercase().trim())
 
-    private val GREETINGS = listOf("Yes, %s?", "I'm here, %s.", "Go ahead, %s.", "What do you need, %s?", "At your service, %s.")
-    private val GREETINGS_NO_NAME = listOf("Yes?", "I'm here.", "Go ahead.", "What do you need?", "At your service.")
+    private val GREETINGS = listOf(
+        "Yes, %s?", "I'm here.", "Go on, %s.", "Hey %s, what's up?", "Mm-hm?", "Listening.",
+        "What's on your mind?", "Talk to me, %s.", "Yep, I'm with you.", "Hey you.", "What do you need?",
+        "At your service.", "Right here, %s.", "Hmm?", "Yo, what's up?",
+    )
+    private val MORNING = listOf("Morning, %s!", "Good morning! What's first?", "Hey, early bird.")
+    private val NIGHT = listOf("Still up, %s?", "Hey night owl.", "Late one, huh? What's up?")
+    private val GOODBYES = listOf(
+        "Anytime.", "Catch you later.", "I'm around if you need me.", "Okay, talk soon.", "Sure thing.",
+        "Bye for now!", "Cool, I'll be here.",
+    )
 
-    fun greeting(name: String): String =
-        if (name.isBlank()) GREETINGS_NO_NAME.random() else GREETINGS.random().format(name)
+    private val recent = ArrayDeque<String>()
+
+    /** A short spoken reply to the wake word that changes every time and suits the hour. */
+    fun greeting(name: String, hour: Int = java.time.LocalTime.now().hour): String {
+        val pool = GREETINGS + when (hour) {
+            in 5..10 -> MORNING
+            in 0..3, 23 -> NIGHT
+            else -> emptyList()
+        }
+        return pick(pool).format(name.ifBlank { "" }).replace(Regex(",? +([?!.])"), "$1").replace(" ,", ",").replace(Regex(" {2,}"), " ").trim()
+    }
+
+    fun goodbye(): String = pick(GOODBYES)
+
+    /** Random choice that avoids the last few lines said. */
+    private fun pick(pool: List<String>): String {
+        val choice = pool.filterNot { it in recent }.ifEmpty { pool }.random()
+        recent.addLast(choice)
+        while (recent.size > 5) recent.removeFirst()
+        return choice
+    }
 }

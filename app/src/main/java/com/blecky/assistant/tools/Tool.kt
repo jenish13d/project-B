@@ -63,4 +63,4 @@ fun Context.requirePermission(permission: String, what: String) {
 }
 
 fun allTools(): List<BleckyTool> =
-    phoneTools() + memoryTools() + notesTools() + reminderTools() + calendarTools() + messageTools()
+    phoneTools() + memoryTools() + notesTools() + reminderTools() + calendarTools() + messageTools() + webTools()

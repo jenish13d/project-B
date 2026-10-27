@@ -83,7 +83,7 @@ class MainActivity : Activity() {
         }
 
         Reminders.scheduleDaily(this)
-        if (blecky.settings.apiKey.isBlank()) startActivity(Intent(this, SettingsActivity::class.java))
+        if (blecky.settings.activeKey.isBlank()) startActivity(Intent(this, SettingsActivity::class.java))
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -127,7 +127,7 @@ class MainActivity : Activity() {
 
     private fun talk() {
         when {
-            blecky.settings.apiKey.isBlank() -> startActivity(Intent(this, SettingsActivity::class.java))
+            blecky.settings.activeKey.isBlank() -> startActivity(Intent(this, SettingsActivity::class.java))
             !Permissions.hasMic(this) -> requestPermissions(Permissions.RUNTIME, 1)
             else -> WakeWordService.talk(this)
         }

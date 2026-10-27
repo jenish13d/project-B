@@ -28,6 +28,12 @@
 
         <TextView style="@style/HudSection" android:text="BRAIN" />
 
+        <Button
+            android:id="@+id/provider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Brain: Google Gemini (free)" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -38,7 +44,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Anthropic API key (sk-ant-…)"
+                android:hint="API key"
                 android:importantForAutofill="no"
                 android:inputType="textPassword" />
 
@@ -52,8 +58,8 @@
         </LinearLayout>
 
         <TextView
-            style="@style/HudNote"
-            android:text="Get one at console.anthropic.com. The account needs credit under Billing, or Blecky gets error 400." />
+            android:id="@+id/provider_note"
+            style="@style/HudNote" />
 
         <TextView style="@style/HudSection" android:text="LISTENING" />
 
@@ -75,7 +81,7 @@
             android:id="@+id/natural_voice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Download natural human voice (100 MB)" />
+            android:text="Download a natural human voice (free)" />
 
         <Button
             android:id="@+id/change_voice"
@@ -85,7 +91,7 @@
 
         <TextView
             style="@style/HudNote"
-            android:text="Optional, most lifelike: paste an ElevenLabs API key (elevenlabs.io, has a free tier). Leave empty to use the offline voice." />
+            android:text="Optional: an ElevenLabs key (free tier at elevenlabs.io) gives an even more lifelike cloud voice. Leave empty to stay free and offline." />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -135,6 +141,36 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="4. Let Blecky read notifications (emails, messages)" />
+
+        <LinearLayout
+            android:id="@+id/xiaomi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView style="@style/HudSection" android:text="XIAOMI / REDMI" />
+
+            <TextView
+                style="@style/HudNote"
+                android:text="HyperOS and MIUI stop background apps and block pop-ups. Allow both, or Blecky stops hearing you when the screen is off." />
+
+            <Button
+                android:id="@+id/xiaomi_autostart"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="5. Turn on Autostart for Blecky" />
+
+            <Button
+                android:id="@+id/xiaomi_popups"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="6. Allow pop-ups in background and on lock screen" />
+
+            <TextView
+                style="@style/HudNote"
+                android:text="Also: open Recents, long-press Blecky and tap the lock icon so HyperOS keeps her running." />
+        </LinearLayout>
 
         <TextView style="@style/HudSection" android:text="MAKE BLECKY YOURS" />
 

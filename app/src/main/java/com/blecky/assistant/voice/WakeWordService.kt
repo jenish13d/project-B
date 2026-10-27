@@ -210,7 +210,7 @@ class WakeWordService : Service() {
                     instantFailures = 0
                     ConversationLog.user(heard)
                     if (WakeWord.isGoodbye(heard)) {
-                        val bye = listOf("Anytime.", "Okay, I'm here if you need me.", "Talk soon.").random()
+                        val bye = WakeWord.goodbye()
                         ConversationLog.blecky(bye)
                         blecky.voice.speak(bye)
                         break

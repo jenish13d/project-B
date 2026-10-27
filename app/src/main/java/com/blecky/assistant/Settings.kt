@@ -5,9 +5,37 @@ import android.content.Context
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("blecky", Context.MODE_PRIVATE)
 
+    /** Which AI runs Blecky's brain: "gemini" and "groq" are free, "claude" needs Anthropic credit. */
+    var provider: String
+        get() = prefs.getString("provider", PROVIDER_GEMINI) ?: PROVIDER_GEMINI
+        set(value) = prefs.edit().putString("provider", value).apply()
+
+    /** Anthropic (Claude) API key. */
     var apiKey: String
         get() = prefs.getString("api_key", "") ?: ""
         set(value) = prefs.edit().putString("api_key", value.trim()).apply()
+
+    fun keyFor(provider: String): String = when (provider) {
+        PROVIDER_CLAUDE -> apiKey
+        else -> prefs.getString("key_$provider", "") ?: ""
+    }
+
+    fun setKeyFor(provider: String, key: String) {
+        if (provider == PROVIDER_CLAUDE) apiKey = key else prefs.edit().putString("key_$provider", key.trim()).apply()
+    }
+
+    /** Key for the provider in use. */
+    val activeKey: String get() = keyFor(provider)
+
+    /** Model picked automatically for a free provider (their model names change often). */
+    fun modelFor(provider: String): String = prefs.getString("model_$provider", "") ?: ""
+
+    fun setModelFor(provider: String, model: String) = prefs.edit().putString("model_$provider", model).apply()
+
+    /** Language for speech recognition; Indian English by default in India, which also copes with Hinglish. */
+    val speechLanguage: String
+        get() = prefs.getString("speech_language", null)
+            ?: if (java.util.Locale.getDefault().country == "IN") "en-IN" else java.util.Locale.getDefault().toLanguageTag()
 
     var model: String
         get() = prefs.getString("model", DEFAULT_MODEL) ?: DEFAULT_MODEL
@@ -53,10 +81,10 @@ class Settings(context: Context) {
         get() = prefs.getInt("check_in_minute", 9 * 60)
         set(value) = prefs.edit().putInt("check_in_minute", value).apply()
 
-    /** Kokoro speaker id; 1 is "Bella". */
-    var kokoroVoice: Int
-        get() = prefs.getInt("kokoro_voice", 1)
-        set(value) = prefs.edit().putInt("kokoro_voice", value).apply()
+    /** Chosen offline neural voice (see NeuralVoices.PACKS). */
+    var voicePack: String
+        get() = prefs.getString("voice_pack", "jenny") ?: "jenny"
+        set(value) = prefs.edit().putString("voice_pack", value).apply()
 
     /** Optional ElevenLabs key for the most lifelike cloud voice. */
     var elevenLabsKey: String
@@ -74,6 +102,9 @@ class Settings(context: Context) {
 
     companion object {
         const val DEFAULT_MODEL = "claude-opus-5-5"
+        const val PROVIDER_GEMINI = "gemini"
+        const val PROVIDER_GROQ = "groq"
+        const val PROVIDER_CLAUDE = "claude"
         const val DEFAULT_VOICE_THRESHOLD = 0.45f
     }
 }

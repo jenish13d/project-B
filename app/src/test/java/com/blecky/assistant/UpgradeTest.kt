@@ -3,6 +3,7 @@ package com.blecky.assistant
 import com.anthropic.core.jsonMapper
 import com.anthropic.models.beta.messages.BetaMessageParam
 import com.anthropic.models.beta.messages.BetaToolUnion
+import com.blecky.assistant.brain.ClaudeEngine
 import com.blecky.assistant.tools.Contact
 import com.blecky.assistant.tools.NameMatch
 import com.blecky.assistant.tools.allTools
@@ -17,8 +18,8 @@ import org.junit.Test
 
 class UpgradeTest {
     private fun body(fallbacks: Boolean): String {
-        val tools = allTools().map { BetaToolUnion.ofBetaTool(Brain.toBetaTool(it)) }
-        val params = Brain.requestParams("claude-opus-5-5", "system", tools, listOf(BetaMessageParam.ofUser("hi")), fallbacks)
+        val tools = allTools().map { BetaToolUnion.ofBetaTool(ClaudeEngine.toBetaTool(it)) }
+        val params = ClaudeEngine.requestParams("claude-opus-5-5", "system", tools, listOf(BetaMessageParam.ofUser("hi")), fallbacks)
         return jsonMapper().writeValueAsString(params._body())
     }
 
@@ -34,10 +35,10 @@ class UpgradeTest {
 
     @Test
     fun `server errors are explained in plain words`() {
-        assertTrue(Brain.explainServerError(400, "Your credit balance is too low to access the Anthropic API.").contains("out of credit"))
-        assertTrue(Brain.explainServerError(404, "model: claude-x not found").contains("model"))
-        assertTrue(Brain.explainServerError(400, "tools.0: bad schema").contains("tools.0: bad schema"))
-        assertTrue(Brain.explainServerError(529, "Overloaded").contains("busy"))
+        assertTrue(ClaudeEngine.explainServerError(400, "Your credit balance is too low to access the Anthropic API.").contains("out of credit"))
+        assertTrue(ClaudeEngine.explainServerError(404, "model: claude-x not found").contains("model"))
+        assertTrue(ClaudeEngine.explainServerError(400, "tools.0: bad schema").contains("tools.0: bad schema"))
+        assertTrue(ClaudeEngine.explainServerError(529, "Overloaded").contains("busy"))
     }
 
     @Test

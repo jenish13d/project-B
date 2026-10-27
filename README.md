@@ -5,19 +5,24 @@ quick, warm, a little witty, and on your side. Say **"Hey Blecky"** or just **"B
 ("Yes, Jai?") and you ask for something. It works with the screen on or off, as long as listening is
 switched on. With the voice lock on, she only wakes for your voice.
 
-She talks with a **natural human voice**: Kokoro, a neural voice that runs offline on the phone, or
-ElevenLabs if you add a key. She keeps the conversation going without you saying her name every time,
+**Everything is free.** Her brain runs on Google Gemini's or Groq's free tier: you need a free key,
+but no card. Her voice is a free open-source neural voice from GitHub that runs offline on the phone.
+Web search and weather use free public sources. Claude stays available as a paid option.
+
+She talks with a **natural human voice**: Piper (fast enough for budget phones like the Redmi 13C) or
+Kokoro (the most human, for fast phones), both offline, or ElevenLabs if you add a key. She keeps the conversation going without you saying her name every time,
 and the screen is a HUD-style particle orb that reacts as she listens, thinks and speaks.
 
 She also talks first. She does a daily check-in (9:00 by default), and when you mention something
 that matters, like an exam or an interview, she schedules a follow-up and asks you how it went.
 She remembers things about you between conversations.
 
-Blecky runs on Claude (Anthropic) and can:
+Blecky can:
 
 | Ask for | Example |
 |---|---|
-| Chat and answers, with live web search | "What's the weather this weekend?" |
+| Chat and answers, with live news search (Google News and Wikipedia) | "What happened in the match today?" |
+| Weather (Open-Meteo) | "Do I need an umbrella tomorrow?" |
 | Open apps | "Open WhatsApp" |
 | Calls and texts (it asks you to confirm first). Misheard names still match, and you can pick a SIM | "Call Jayesh on Jio", "Text Sam I'm running late" |
 | Reminders (spoken out loud and shown as a notification) | "Remind me to take my pills in 20 minutes" |
@@ -50,7 +55,11 @@ Blecky runs on Claude (Anthropic) and can:
 
 1. Install Android Studio, open this folder and press **Run**. Or build from the command line with
    `./gradlew assembleDebug` and install `app/build/outputs/apk/debug/app-debug.apk`. It needs Android 11 or newer.
-2. Get an API key at <https://console.anthropic.com> and paste it into Blecky. API usage is billed by Anthropic.
+2. Get a **free** AI key and paste it under **Settings → Brain**:
+   - **Google Gemini** (default): sign in at <https://aistudio.google.com/apikey> with a Google account and
+     tap *Create API key*. No card needed, and the free limits are plenty for one person.
+   - **Groq** (faster, tighter free limits): <https://console.groq.com/keys>.
+   - Tap the Brain button to switch between them, or to Claude if you have Anthropic credit.
 3. Tap steps 1 to 4 in the app to grant access:
    1. Microphone, calls, texts, contacts and calendar.
    2. **Display over other apps**. Without it, Android won't let Blecky open apps or calls while it runs in the background.
@@ -61,20 +70,27 @@ Blecky runs on Claude (Anthropic) and can:
       **Settings → Apps → Blecky**, tap **⋮** (top right) → **Allow restricted settings**, then try again.
       The ⋮ option only appears after Android has blocked it once. The app walks you through this.
 4. Tap **Start listening**. The first time, Blecky downloads two offline models (about 55 MB in total).
-5. Under **Settings → Voice**, tap **Download natural human voice** (about 100 MB). Without it she
-   uses the phone's robotic voice. For the most lifelike voice, paste an ElevenLabs API key (free tier
-   at elevenlabs.io).
+5. Under **Settings → Voice**, tap **Download a natural human voice** and pick one. Jenny, Amy and
+   Hannah (about 67 MB each) are fast on any phone. Bella, Sky and Emma (103 MB, shared) sound even
+   more human but need a fast processor. Without one of these she uses the phone's robotic voice.
 6. Optional, under **Settings**: teach her your voice and turn on the voice lock, try other voices
    (she starts on a friendly female English voice, and the choice depends on the voices your phone
    has installed), set or turn off the daily check-in, and see or clear what she remembers.
 
+## Xiaomi / Redmi / POCO phones
+
+HyperOS and MIUI are strict with background apps. The Settings screen shows extra steps on these phones:
+turn on **Autostart**, allow **pop-ups while running in the background** and **show on lock screen**,
+and lock Blecky in Recents (long-press her card and tap the lock). Without these, she stops hearing
+you a few minutes after the screen turns off.
+
 ## Troubleshooting
 
-- **"Anthropic rejected that request (error 400)" or "out of credit"**: the API key works, but the
-  Anthropic account has no credit. Add some at console.anthropic.com → Billing. Blecky now shows
-  Anthropic's exact message.
+- **"I've used up the free limit"**: free tiers allow a set number of requests per minute and per day.
+  Wait a minute, or switch to the other free brain in Settings.
+- **Error 400 with Claude**: the Anthropic account has no credit. Switch the brain to Gemini, which is free.
 - **"Can't reach Anthropic"**: check mobile data or Wi-Fi, and make sure no data saver or VPN is blocking Blecky.
-- **Voice pauses between sentences**: the offline voice is slower on older phones. Try ElevenLabs.
+- **Voice pauses between sentences**: pick a "fast" voice (Jenny, Amy or Hannah). The premium voices are too slow for budget phones.
 
 ## Things Android doesn't allow
 
@@ -90,8 +106,9 @@ Blecky runs on Claude (Anthropic) and can:
 
 ## Code layout
 
-- `Brain.kt` runs the Claude tool-use loop. The default model is `claude-opus-5-5` at low effort, which
-  keeps voice replies quick. Refusal fallback is on.
+- `Brain.kt` routes each message to the chosen AI. `brain/OpenAiEngine.kt` runs the tool loop for Gemini
+  and Groq, and picks a current model by itself when model names change. `brain/ClaudeEngine.kt` runs
+  Claude. `brain/Persona.kt` holds her personality.
 - `tools/` holds everything Blecky can do. To add a skill, write a `BleckyTool` and add it to `allTools()`.
 - `voice/WakeWordService.kt` is the always-on listener, the voice lock and the spoken conversation loop.
 - `voice/VoiceEnrollment.kt` and `voice/SpeakerProfile.kt` record and compare your voiceprint.
@@ -105,7 +122,9 @@ Run the unit tests with `./gradlew testDebugUnitTest`.
 
 - [Vosk](https://github.com/alphacep/vosk-api): offline wake-word spotting and voice matching.
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx): runs neural voices on the phone.
-- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M): the natural female voices (Apache 2.0).
+- [Piper](https://github.com/rhasspy/piper) voices: Jenny, Amy and Hannah, fast and natural.
+- [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M): the premium voices (Apache 2.0).
+- [Open-Meteo](https://open-meteo.com) for weather, and Google News RSS and the Wikipedia API for search.
 - [Anthropic Java SDK](https://github.com/anthropics/anthropic-sdk-java): Claude, Blecky's brain.
 
 The sherpa-onnx library is downloaded from its GitHub release, and its checksum verified, on the first build.
@@ -114,5 +133,5 @@ The sherpa-onnx library is downloaded from its GitHub release, and its checksum 
 
 Your API key, notes, reminders, memories and voiceprint are stored only in the app's private storage on the phone. Audio
 before the wake word is processed on the phone. What you say after she wakes goes through Android's
-speech recognizer (usually Google) and Anthropic's API. With an ElevenLabs key, Blecky's replies are sent to
+speech recognizer (usually Google) and the AI you picked (Google Gemini, Groq or Anthropic). With an ElevenLabs key, Blecky's replies are sent to
 ElevenLabs to be spoken. The Kokoro voice runs entirely on the phone.

@@ -6,10 +6,12 @@ import android.app.TimePickerDialog
 import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Button
+import com.blecky.assistant.Settings as Prefs
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
@@ -42,12 +44,18 @@ class SettingsActivity : Activity() {
         val settings = blecky.settings
 
         val keyField = findViewById<EditText>(R.id.api_key)
+        button(R.id.provider).setOnClickListener {
+            val order = PROVIDERS.map { it.first }
+            settings.provider = order[(order.indexOf(settings.provider) + 1) % order.size]
+            blecky.brain.reset()
+            refresh()
+        }
         button(R.id.save_key).setOnClickListener {
             if (keyField.text.isNotBlank()) {
-                settings.apiKey = keyField.text.toString()
+                settings.setKeyFor(settings.provider, keyField.text.toString())
                 keyField.text.clear()
                 blecky.brain.reset()
-                toast("API key saved")
+                toast("Key saved")
                 refresh()
             }
         }
@@ -69,7 +77,7 @@ class SettingsActivity : Activity() {
             refresh()
         }
 
-        button(R.id.natural_voice).setOnClickListener { installNaturalVoice() }
+        button(R.id.natural_voice).setOnClickListener { chooseNaturalVoice() }
         button(R.id.change_voice).setOnClickListener {
             scope.launch {
                 val name = blecky.voice.nextVoice()
@@ -110,6 +118,22 @@ class SettingsActivity : Activity() {
             refresh()
         }
         button(R.id.check_in_time).setOnClickListener { pickCheckInTime() }
+        if (isXiaomi()) {
+            findViewById<android.view.View>(R.id.xiaomi).visibility = android.view.View.VISIBLE
+            button(R.id.xiaomi_autostart).setOnClickListener {
+                openFirst(
+                    Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+                )
+            }
+            button(R.id.xiaomi_popups).setOnClickListener {
+                openFirst(
+                    Intent("miui.intent.action.APP_PERM_EDITOR")
+                        .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                        .putExtra("extra_pkgname", packageName),
+                    Intent("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", packageName),
+                )
+            }
+        }
         button(R.id.memories).setOnClickListener { showMemories() }
     }
 
@@ -131,7 +155,7 @@ class SettingsActivity : Activity() {
 
     private fun startListening() {
         when {
-            blecky.settings.apiKey.isBlank() -> toast("Paste your Anthropic API key first")
+            blecky.settings.activeKey.isBlank() -> toast("Paste your free AI key first (Brain section)")
             !Permissions.hasMic(this) -> requestPermissions(Permissions.RUNTIME, 1)
             !ModelInstaller.isInstalled(this) -> installModels { WakeWordService.listen(this) }
             else -> WakeWordService.listen(this)
@@ -148,17 +172,31 @@ class SettingsActivity : Activity() {
         ModelInstaller.install(this) { text -> runOnUiThread { status.text = text } }
     }
 
-    private fun installNaturalVoice() {
-        if (blecky.voice.kokoro.isInstalled()) {
-            toast("The natural voice is already installed")
-            return
-        }
-        runDownload({
-            toast("Natural voice ready")
-            scope.launch { blecky.voice.speak("Hey! This is my new voice. Much better, right?") }
-        }) {
-            blecky.voice.kokoro.install { text -> runOnUiThread { status.text = text } }
-        }
+    /** Lists the free offline voices; picking one downloads it if needed and switches to it. */
+    private fun chooseNaturalVoice() {
+        val voices = blecky.voice.neural
+        val packs = com.blecky.assistant.voice.NeuralVoices.PACKS
+        val labels = packs.map { pack ->
+            val state = if (voices.isInstalled(pack)) "downloaded" else "${pack.sizeMb} MB"
+            "${pack.label} · $state"
+        }.toTypedArray()
+        val selected = packs.indexOfFirst { it.id == blecky.settings.voicePack }
+        AlertDialog.Builder(this)
+            .setTitle("Choose Blecky's voice")
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                dialog.dismiss()
+                val pack = packs[which]
+                val sayHello: () -> Unit = {
+                    blecky.settings.voicePack = pack.id
+                    refresh()
+                    scope.launch { blecky.voice.speak("Hey! How do I sound? I can switch any time you like.") }
+                }
+                if (voices.isInstalled(pack)) sayHello() else runDownload(sayHello) {
+                    voices.install(pack) { text -> runOnUiThread { status.text = text } }
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     private fun runDownload(then: () -> Unit, download: suspend () -> Unit) {
@@ -289,27 +327,29 @@ class SettingsActivity : Activity() {
         if (busy) return
         val settings = blecky.settings
         val missing = buildList {
-            if (settings.apiKey.isBlank()) add("API key")
+            if (settings.activeKey.isBlank()) add("AI key")
             if (!Permissions.hasMic(this@SettingsActivity)) add("step 1")
             if (!Settings.canDrawOverlays(this@SettingsActivity)) add("step 2")
             if (!getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) add("step 3")
             if (!Permissions.notificationAccess(this@SettingsActivity)) add("step 4")
-            if (!blecky.voice.kokoro.isInstalled() && settings.elevenLabsKey.isBlank()) add("natural voice")
+            if (blecky.voice.neuralPack() == null && settings.elevenLabsKey.isBlank()) add("natural voice")
         }
         val listening = WakeWordService.isRunning && settings.listening
         status.text = buildString {
             append(if (listening) "Listening. Say “Hey Blecky” or “Bleck”, even with the screen off." else "Not listening right now.")
-            append("\nAPI key: ${if (settings.apiKey.isBlank()) "not set" else "saved (…${settings.apiKey.takeLast(4)})"}")
+            val key = settings.activeKey
+            append("\nAI key: ${if (key.isBlank()) "not set" else "saved (…${key.takeLast(4)})"}")
             if (missing.isNotEmpty()) append("\nStill to set up: ${missing.joinToString()}.")
         }
         button(R.id.toggle_listening).text = if (listening) "Stop listening" else "Start listening for “Hey Blecky”"
         button(R.id.follow_up).text = "Keep the conversation going: " +
             (FOLLOW_UP.firstOrNull { it.first == settings.followUpSeconds }?.second ?: "${settings.followUpSeconds} seconds")
-        button(R.id.natural_voice).text = if (blecky.voice.kokoro.isInstalled()) {
-            "Natural human voice: installed"
-        } else {
-            "Download natural human voice (100 MB)"
-        }
+        val provider = PROVIDERS.firstOrNull { it.first == settings.provider } ?: PROVIDERS.first()
+        button(R.id.provider).text = "Brain: ${provider.second} (tap to change)"
+        findViewById<EditText>(R.id.api_key).hint = "${provider.second} key"
+        findViewById<TextView>(R.id.provider_note).text = provider.third
+        button(R.id.natural_voice).text = blecky.voice.neuralPack()?.let { "Natural voice: ${it.label} (tap for more)" }
+            ?: "Download a natural human voice (free, about 67 MB)"
         button(R.id.change_voice).text = "Try another voice (now: ${blecky.voice.currentVoiceName()})"
 
         val enrolled = SpeakerProfile.decode(settings.voiceProfile) != null
@@ -328,8 +368,35 @@ class SettingsActivity : Activity() {
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
 
+    private fun isXiaomi() = Build.MANUFACTURER.lowercase() in setOf("xiaomi", "redmi", "poco")
+
+    /** Opens the first of [intents] this phone understands, else Blecky's app info page. */
+    private fun openFirst(vararg intents: Intent) {
+        for (intent in intents) {
+            if (runCatching { startActivity(intent) }.isSuccess) return
+        }
+        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+    }
+
     companion object {
         private val STRICTNESS = listOf("relaxed" to 0.35f, "normal" to 0.45f, "strict" to 0.55f)
+        private val PROVIDERS = listOf(
+            Triple(
+                Prefs.PROVIDER_GEMINI,
+                "Google Gemini (free)",
+                "Free, no card needed: sign in at aistudio.google.com/apikey with your Google account, tap Create API key, and paste it here.",
+            ),
+            Triple(
+                Prefs.PROVIDER_GROQ,
+                "Groq (free, very fast)",
+                "Free, no card needed: sign up at console.groq.com/keys, create a key and paste it here. Its free limits are tighter than Gemini's.",
+            ),
+            Triple(
+                Prefs.PROVIDER_CLAUDE,
+                "Claude (paid)",
+                "Needs an Anthropic API key with credit (console.anthropic.com, under Billing).",
+            ),
+        )
         private val FOLLOW_UP = listOf(20 to "20 seconds", 45 to "45 seconds", 120 to "2 minutes", 600 to "until I say bye")
     }
 }

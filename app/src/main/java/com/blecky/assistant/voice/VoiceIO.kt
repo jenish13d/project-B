@@ -29,7 +29,7 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     private val ttsReady = CompletableDeferred<Boolean>()
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
     private lateinit var tts: TextToSpeech
-    val kokoro = KokoroVoice(context)
+    val neural = NeuralVoices(context)
     private val elevenLabs = ElevenLabsVoice()
 
     @Volatile
@@ -70,21 +70,27 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         tts.setSpeechRate(1.03f)
     }
 
+    /** The chosen offline voice if it's downloaded, otherwise any downloaded one. */
+    fun neuralPack(): NeuralVoices.Pack? {
+        val chosen = neural.pack(settings.voicePack)
+        return if (neural.isInstalled(chosen)) chosen else neural.installed().firstOrNull()
+    }
+
     /** The voice Blecky speaks with now, for the settings screen. */
     fun currentVoiceName(): String = when {
         settings.elevenLabsKey.isNotBlank() -> "ElevenLabs (cloud)"
-        kokoro.isInstalled() -> "Natural: " + (KokoroVoice.VOICES.firstOrNull { it.first == settings.kokoroVoice }?.second ?: "Bella")
+        neuralPack() != null -> neuralPack()!!.label
         else -> "Phone voice (basic)"
     }
 
     /** Switches to the next voice of the current engine and returns its name. */
     suspend fun nextVoice(): String? {
-        if (kokoro.isInstalled()) {
-            val voices = KokoroVoice.VOICES
-            val index = voices.indexOfFirst { it.first == settings.kokoroVoice }
-            val next = voices[(index + 1) % voices.size]
-            settings.kokoroVoice = next.first
-            return next.second
+        val installed = neural.installed()
+        if (installed.isNotEmpty()) {
+            val index = installed.indexOfFirst { it.id == settings.voicePack }
+            val next = installed[(index + 1) % installed.size]
+            settings.voicePack = next.id
+            return next.label
         }
         if (!ttsReady.await()) return null
         val voices = englishVoices()
@@ -110,7 +116,8 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
             withContext(Dispatchers.IO) {
                 if (settings.elevenLabsKey.isNotBlank() && tryVoice { elevenLabs.speak(settings.elevenLabsKey, settings.elevenLabsVoice, spoken) }) return@withContext
                 if (interrupted) return@withContext
-                if (kokoro.isInstalled() && tryVoice { kokoro.speak(spoken, settings.kokoroVoice) }) return@withContext
+                val pack = neuralPack()
+                if (pack != null && tryVoice { neural.speak(spoken, pack) }) return@withContext
                 if (!interrupted) speakWithPhoneVoice(spoken)
             }
         } finally {
@@ -139,7 +146,7 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     fun stopSpeaking() {
         interrupted = true
         elevenLabs.stop()
-        kokoro.stop()
+        neural.stop()
         tts.stop()
     }
 
@@ -193,6 +200,7 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
                 Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                     .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                     .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, settings.speechLanguage)
                     .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L),
             )
         }
