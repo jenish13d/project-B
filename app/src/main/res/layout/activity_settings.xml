@@ -26,48 +26,18 @@
             android:textColor="@color/hud_text"
             android:textSize="14sp" />
 
-        <TextView style="@style/HudSection" android:text="BRAIN" />
-
         <Button
-            android:id="@+id/provider"
+            android:id="@+id/setup_all"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Brain: Auto (all free AIs together)" />
-
-        <Button
-            android:id="@+id/key_for"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Add a key for: Google Gemini" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/api_key"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="API key"
-                android:importantForAutofill="no"
-                android:inputType="textPassword" />
-
-            <Button
-                android:id="@+id/save_key"
-                android:layout_width="wrap_content"
-                android:layout_height="48dp"
-                android:layout_marginStart="8dp"
-                android:layout_marginTop="0dp"
-                android:text="Save" />
-        </LinearLayout>
+            android:layout_marginTop="12dp"
+            android:text="Set up everything (free, no keys)" />
 
         <TextView
-            android:id="@+id/provider_note"
+            android:id="@+id/setup_all_note"
             style="@style/HudNote" />
 
-        <TextView style="@style/HudSection" android:text="ON-PHONE AI (NO INTERNET, NO KEY)" />
+        <TextView style="@style/HudSection" android:text="BRAIN: ON-PHONE AI (NO KEY)" />
 
         <Button
             android:id="@+id/offline_model"
@@ -125,9 +95,24 @@
             android:layout_height="wrap_content"
             android:text="Set up the Gujarati voice" />
 
+
+        <TextView style="@style/HudSection" android:text="OPTIONAL: ONLINE AI KEYS" />
+
         <TextView
             style="@style/HudNote"
-            android:text="Optional: an ElevenLabs key (free tier at elevenlabs.io) gives an even more lifelike cloud voice. Leave empty to stay free and offline." />
+            android:text="Not needed: Blecky works fully without keys. Free keys only make her smarter on hard questions when you're online." />
+
+        <Button
+            android:id="@+id/provider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Brain: Auto (all free AIs together)" />
+
+        <Button
+            android:id="@+id/key_for"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Add a key for: Google Gemini" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -135,22 +120,26 @@
             android:orientation="horizontal">
 
             <EditText
-                android:id="@+id/eleven_key"
+                android:id="@+id/api_key"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="ElevenLabs API key"
+                android:hint="API key"
                 android:importantForAutofill="no"
                 android:inputType="textPassword" />
 
             <Button
-                android:id="@+id/save_eleven"
+                android:id="@+id/save_key"
                 android:layout_width="wrap_content"
                 android:layout_height="48dp"
                 android:layout_marginStart="8dp"
                 android:layout_marginTop="0dp"
                 android:text="Save" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/provider_note"
+            style="@style/HudNote" />
 
         <TextView style="@style/HudSection" android:text="PERMISSIONS" />
 

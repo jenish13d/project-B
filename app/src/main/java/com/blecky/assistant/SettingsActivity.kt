@@ -79,13 +79,7 @@ class SettingsActivity : Activity() {
         }
         button(R.id.gujarati_voice).setOnClickListener { setUpGujaratiVoice() }
         button(R.id.offline_model).setOnClickListener { chooseOfflineModel() }
-        val elevenField = findViewById<EditText>(R.id.eleven_key)
-        button(R.id.save_eleven).setOnClickListener {
-            settings.elevenLabsKey = elevenField.text.toString()
-            elevenField.text.clear()
-            toast(if (settings.elevenLabsKey.isBlank()) "ElevenLabs voice turned off" else "ElevenLabs voice on")
-            refresh()
-        }
+        button(R.id.setup_all).setOnClickListener { setUpEverything() }
 
         button(R.id.toggle_listening).setOnClickListener {
             if (WakeWordService.isRunning && settings.listening) WakeWordService.stop(this) else startListening()
@@ -355,7 +349,7 @@ class SettingsActivity : Activity() {
             if (!Settings.canDrawOverlays(this@SettingsActivity)) add("step 2")
             if (!getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)) add("step 3")
             if (!Permissions.notificationAccess(this@SettingsActivity)) add("step 4")
-            if (blecky.voice.neuralPack() == null && settings.elevenLabsKey.isBlank()) add("natural voice")
+            if (blecky.voice.neuralPack() == null) add("natural voice")
         }
         val listening = WakeWordService.isRunning && settings.listening
         status.text = buildString {
@@ -378,6 +372,15 @@ class SettingsActivity : Activity() {
         findViewById<TextView>(R.id.provider_note).text = "${keyInfo.third}\nKeys saved: $saved."
         val models = blecky.brain.offline.models
         val active = models.active(settings.offlineModel)
+        val recommendedModel = OfflineModels.recommended(models.phoneRamGb())
+        val ready = ModelInstaller.isInstalled(this) && blecky.voice.neuralPack() != null && active != null
+        button(R.id.setup_all).text = if (ready) "Everything is set up ✓" else "Set up everything (free, no keys)"
+        findViewById<TextView>(R.id.setup_all_note).text = if (ready) {
+            "Blecky's ears, voice and on-phone brain are on this phone. With internet she also looks things up for free."
+        } else {
+            "Downloads her ears (55 MB), her voice (Supertonic, 129 MB) and her on-phone brain " +
+                "(${recommendedModel.label.substringBefore(',')}, ${recommendedModel.sizeMb} MB). Use Wi-Fi. No accounts, keys or payments."
+        }
         button(R.id.offline_model).text = active?.let { "On-phone AI: ${it.label} (tap to change)" } ?: "Download an on-phone AI (free)"
         val ram = models.phoneRamGb()
         findViewById<TextView>(R.id.offline_note).text =
@@ -405,6 +408,29 @@ class SettingsActivity : Activity() {
     }
 
     private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_SHORT).show()
+
+    /** One tap: her ears, her voice and the on-phone brain that fits this phone, then start listening. */
+    private fun setUpEverything() {
+        if (!Permissions.hasMic(this)) {
+            requestPermissions(Permissions.RUNTIME, 1)
+            toast("Allow the microphone, then tap Set up everything again")
+            return
+        }
+        val voices = blecky.voice.neural
+        val voice = voices.pack("st-f2")
+        val models = blecky.brain.offline.models
+        val model = OfflineModels.recommended(models.phoneRamGb())
+        runDownload({
+            blecky.settings.voicePack = voice.id
+            blecky.settings.offlineModel = model.id
+            WakeWordService.listen(this)
+            scope.launch { blecky.voice.speak("All set! No keys, no bills. Just say hey Blecky whenever you need me.") }
+        }) {
+            if (!ModelInstaller.isInstalled(this)) ModelInstaller.install(this) { text -> runOnUiThread { status.text = text } }
+            if (!voices.isInstalled(voice)) voices.install(voice) { text -> runOnUiThread { status.text = text } }
+            if (!models.isInstalled(model)) models.download(model) { text -> runOnUiThread { status.text = text } }
+        }
+    }
 
     /** Lists the on-phone AI models; picking one downloads it if needed and makes it active. */
     private fun chooseOfflineModel() {

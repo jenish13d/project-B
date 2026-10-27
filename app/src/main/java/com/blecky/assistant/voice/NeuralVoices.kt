@@ -1,10 +1,12 @@
 package com.blecky.assistant.voice
 
 import android.content.Context
+import com.k2fsa.sherpa.onnx.GenerationConfig
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsKokoroModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsSupertonicModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -21,7 +23,7 @@ import kotlin.concurrent.thread
  * Kokoro sounds the most human but needs a fast processor.
  */
 class NeuralVoices(private val context: Context) {
-    enum class Kind { PIPER, KOKORO }
+    enum class Kind { PIPER, KOKORO, SUPERTONIC }
 
     class Pack(
         val id: String,
@@ -31,6 +33,8 @@ class NeuralVoices(private val context: Context) {
         val sizeMb: Int,
         val speakerId: Int = 0,
         val language: String = "en",
+        /** Can also read Hindi (Supertonic speaks 31 languages, Hindi among them). */
+        val speaksHindi: Boolean = false,
     ) {
         val url get() = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/$folder.tar.bz2"
     }
@@ -88,8 +92,8 @@ class NeuralVoices(private val context: Context) {
         PACKS.filter { it.folder == pack.folder }.forEach { File(root, ".${it.folder}").createNewFile() }
     }
 
-    /** Speaks [text] with [pack]; blocks until it has been heard. */
-    fun speak(text: String, pack: Pack, speed: Float = 1.0f) {
+    /** Speaks [text] with [pack] in [language] ("en" or "hi"); blocks until it has been heard. */
+    fun speak(text: String, pack: Pack, speed: Float = 1.0f, language: String = "en") {
         val engine = engine(pack)
         val player = PcmPlayer(engine.sampleRate(), floatSamples = true)
         current = player
@@ -103,9 +107,16 @@ class NeuralVoices(private val context: Context) {
             }
         }
         try {
-            engine.generateWithCallback(text, pack.speakerId, speed) { samples ->
+            val onChunk: (FloatArray) -> Int = { samples ->
                 queue.put(samples.copyOf())
                 if (player.stopped) 0 else 1
+            }
+            if (pack.kind == Kind.SUPERTONIC) {
+                // Supertonic speaks a little slowly by default; 8 steps is its quality setting.
+                val config = GenerationConfig(sid = pack.speakerId, speed = speed * 1.15f, numSteps = 8, extra = mapOf("lang" to language))
+                engine.generateWithConfigAndCallback(text, config, onChunk)
+            } else {
+                engine.generateWithCallback(text, pack.speakerId, speed, onChunk)
             }
         } finally {
             queue.put(FloatArray(0))
@@ -140,6 +151,20 @@ class NeuralVoices(private val context: Context) {
                 debug = false,
                 provider = "cpu",
             )
+            Kind.SUPERTONIC -> OfflineTtsModelConfig(
+                supertonic = OfflineTtsSupertonicModelConfig(
+                    durationPredictor = "$dir/duration_predictor.int8.onnx",
+                    textEncoder = "$dir/text_encoder.int8.onnx",
+                    vectorEstimator = "$dir/vector_estimator.int8.onnx",
+                    vocoder = "$dir/vocoder.int8.onnx",
+                    ttsJson = "$dir/tts.json",
+                    unicodeIndexer = "$dir/unicode_indexer.bin",
+                    voiceStyle = "$dir/voice.bin",
+                ),
+                numThreads = threads,
+                debug = false,
+                provider = "cpu",
+            )
             Kind.PIPER -> OfflineTtsModelConfig(
                 vits = OfflineTtsVitsModelConfig(
                     model = model,
@@ -164,8 +189,16 @@ class NeuralVoices(private val context: Context) {
 
     companion object {
         private const val KOKORO = "kokoro-int8-en-v0_19"
+        private const val SUPERTONIC = "sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
 
         val PACKS = listOf(
+            // Supertonic 3 (github.com/supertone-inc/supertonic, MIT): natural and about 5x faster
+            // than real time on two CPU cores in testing, so it suits budget phones. Voices 1-5 are female.
+            Pack("st-f2", "Supertonic Maya (natural, fast, also Hindi) ★", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 1, speaksHindi = true),
+            Pack("st-f1", "Supertonic Ava (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 0, speaksHindi = true),
+            Pack("st-f3", "Supertonic Lily (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 2, speaksHindi = true),
+            Pack("st-f4", "Supertonic Zoe (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 3, speaksHindi = true),
+            Pack("st-f5", "Supertonic Iris (natural, fast, also Hindi)", SUPERTONIC, Kind.SUPERTONIC, 129, speakerId = 4, speaksHindi = true),
             Pack("jenny", "Jenny, British (fast)", "vits-piper-en_GB-jenny_dioco-medium", Kind.PIPER, 67),
             Pack("amy", "Amy, American (fast)", "vits-piper-en_US-amy-medium", Kind.PIPER, 67),
             Pack("hannah", "Hannah, American (fast)", "vits-piper-en_US-hfc_female-medium", Kind.PIPER, 67),

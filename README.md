@@ -15,18 +15,27 @@ remembers how you were feeling last time and keeps a short diary of moments you 
 ask how the exam went or be happy for you days later. It's simulated, and if you ask, she's honest
 that she's an AI.
 
-She understands **English, Hindi and Gujarati**, mixed too, and answers in the same language: Hindi with
-an offline Hindi voice, Gujarati with Google's free voice.
+She understands **English, Hindi and Gujarati**, mixed too, and answers in the same language.
 
-**Everything is free.** Her brain combines several free AIs: Google Gemini, Groq, Cerebras and
-OpenRouter's open models (Gemma, Nemotron and others). Add a free key (no card) for any of them. In
-**Auto** mode she uses them as one brain, and when one hits its free limit the next one takes over
-mid-conversation. Her voice is a free open-source neural voice from GitHub that runs offline on the phone.
-Web search and weather use free public sources. Claude stays available as a paid option.
+**No keys, no accounts, no bills.** Tap **Settings → Set up everything** once, on Wi-Fi. Blecky then
+runs on open-source AI from GitHub and Hugging Face, all on the phone:
 
-She talks with a **natural human voice**: Piper (fast enough for budget phones like the Redmi 13C) or
-Kokoro (the most human, for fast phones), both offline, or ElevenLabs if you add a key. She keeps the conversation going without you saying her name every time,
-and the screen is a HUD-style particle orb that reacts as she listens, thinks and speaks.
+| Step | What runs it |
+|---|---|
+| Hearing "Hey Blecky", and checking it's your voice | Vosk, offline |
+| Understanding your words | Android's built-in speech recognizer |
+| Everyday commands (call, timer, torch, apps, time, battery) | Built-in rules, instant |
+| Thinking and talking | Gemma 4 E2B by Google, on the phone |
+| Fresh facts when you're online | Google News, Wikipedia and Open-Meteo, free and keyless |
+| Memory, moods and diary | On the phone |
+| Her voice | Supertonic 3 (MIT license), on the phone, English and Hindi |
+
+A phone can only run one AI model at a time, so these are steps in a pipeline, not a thousand brains
+at once. If you add free online keys (optional: Gemini, Groq, Cerebras, OpenRouter), she uses them for
+harder questions when you're online. Claude is a paid option.
+
+The screen is a HUD-style particle orb that reacts as she listens, thinks and speaks, and she keeps
+the conversation going without you saying her name each time.
 
 She also talks first. She does a daily check-in (9:00 by default), and when you mention something
 that matters, like an exam or an interview, she schedules a follow-up and asks you how it went.
@@ -62,7 +71,7 @@ Blecky can:
   each wake phrase is compared with your voiceprint, on the phone. If she ignores you, set *Voice match*
   to relaxed. If she wakes for other people, set it to strict. The button shows how well your last try matched.
   The lock checks the wake phrase only. After she wakes, whoever is talking is heard.
-- After she answers, your request goes to Android's speech recognizer, then to Claude, and the reply is
+- After she answers, your request goes to Android's speech recognizer, then to her brain, and the reply is
   read aloud. **Just keep talking. You don't need to say her name again.** She keeps listening for
   45 seconds after each reply. Change this in Settings, all the way up to "until I say bye". Say
   "thanks" or "bye" to end.
@@ -73,13 +82,9 @@ Blecky can:
 
 1. Install Android Studio, open this folder and press **Run**. Or build from the command line with
    `./gradlew assembleDebug` and install `app/build/outputs/apk/debug/app-debug.apk`. It needs Android 11 or newer.
-2. Get at least one **free** AI key and paste it under **Settings → Brain** (tap *Add a key for* to choose
-   which one). None of them needs a card:
-   - **Google Gemini**, the best start and great at Hindi and Gujarati: <https://aistudio.google.com/apikey>.
-   - **Groq**, very fast: <https://console.groq.com/keys>.
-   - **Cerebras**, fast: <https://cloud.cerebras.ai>.
-   - **OpenRouter**, free open models, 50 requests a day: <https://openrouter.ai/keys>.
-   - The more keys you add, the less often she hits a free limit. Leave the Brain on **Auto**.
+2. Open **Settings** and tap **Set up everything** on Wi-Fi. It downloads her ears (55 MB), her voice
+   (129 MB) and the on-phone brain that fits your phone (Gemma 4 E2B, 2.6 GB, on most phones), then
+   starts listening. No accounts or keys.
 3. Tap steps 1 to 4 in the app to grant access:
    1. Microphone, calls, texts, contacts and calendar.
    2. **Display over other apps**. Without it, Android won't let Blecky open apps or calls while it runs in the background.
@@ -89,11 +94,10 @@ Blecky can:
       for apps installed from an APK file. If it says "restricted setting" or "not allowed", open
       **Settings → Apps → Blecky**, tap **⋮** (top right) → **Allow restricted settings**, then try again.
       The ⋮ option only appears after Android has blocked it once. The app walks you through this.
-4. Tap **Start listening**. The first time, Blecky downloads two offline models (about 55 MB in total).
-5. Under **Settings → Voice**, tap **Download a natural human voice** and pick one. Jenny, Amy and
-   Hannah (about 67 MB each) are fast on any phone. Bella, Sky and Emma (103 MB, shared) sound even
-   more human but need a fast processor. Without one of these she uses the phone's robotic voice.
-6. Optional, under **Settings**: teach her your voice and turn on the voice lock, try other voices
+4. To pick a different voice, go to **Settings → Voice**. Supertonic Maya, Ava, Lily, Zoe and Iris are
+   natural and fast on budget phones, and speak Hindi too. Jenny, Amy and Hannah (Piper) are a little
+   more robotic. Bella, Sky and Emma (Kokoro) sound very human but are too slow for budget phones.
+5. Optional, under **Settings**: online AI keys, then teach her your voice and turn on the voice lock, try other voices
    (she starts on a friendly female English voice, and the choice depends on the voices your phone
    has installed), set or turn off the daily check-in, and see or clear what she remembers.
 
@@ -111,6 +115,11 @@ Downloads use Android's download manager, so you can leave the app while they ru
 These are much smaller than the online brains: fine for chatting and quick help, weaker at complex
 questions, and they sometimes claim to have done something they didn't. Everyday commands skip the
 model entirely, which covers most of that.
+
+**Research step:** when you're online and ask something that needs fresh facts (news, scores, prices,
+weather, "who is..."), Blecky looks it up first, for free and with no key, and hands the results to
+the model with your question. In testing, Gemma 4 answered from live cricket headlines and gave a
+Gujarati weather answer in 2-3 seconds on a server CPU; expect several seconds on a budget phone.
 
 ## Languages
 
@@ -159,7 +168,8 @@ you a few minutes after the screen turns off.
 - `voice/WakeWordService.kt` is the always-on listener, the voice lock and the spoken conversation loop.
 - `voice/VoiceEnrollment.kt` and `voice/SpeakerProfile.kt` record and compare your voiceprint.
 - `tools/MemoryTools.kt` holds long-term memory. `tools/Reminders.kt` holds reminders and the check-ins Blecky starts.
-- `voice/VoiceIO.kt` handles speech recognition and picks the voice. `voice/KokoroVoice.kt`, `voice/ElevenLabsVoice.kt` and `voice/PcmPlayer.kt` produce the speech.
+- `voice/VoiceIO.kt` handles speech recognition and picks the voice. `voice/NeuralVoices.kt` (Supertonic,
+  Piper, Kokoro) and `voice/PcmPlayer.kt` produce the speech. `brain/WebLookup.kt` is the research step.
 - `ui/ParticleOrbView.kt` draws the particle orb. `MainActivity` is the chat screen and `SettingsActivity` holds the setup.
 
 Run the unit tests with `./gradlew testDebugUnitTest`.
@@ -168,6 +178,7 @@ Run the unit tests with `./gradlew testDebugUnitTest`.
 
 - [Vosk](https://github.com/alphacep/vosk-api): offline wake-word spotting and voice matching.
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx): runs neural voices on the phone.
+- [Supertonic 3](https://github.com/supertone-inc/supertonic): the default voices (MIT license).
 - [Piper](https://github.com/rhasspy/piper) voices: Jenny, Amy and Hannah, fast and natural.
 - [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M): the premium voices (Apache 2.0).
 - [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) runs the on-phone AI, with models from
@@ -182,5 +193,6 @@ The sherpa-onnx library is downloaded from its GitHub release, and its checksum 
 
 Your API key, notes, reminders, memories and voiceprint are stored only in the app's private storage on the phone. Audio
 before the wake word is processed on the phone. What you say after she wakes goes through Android's
-speech recognizer (usually Google) and the AI you picked (Google Gemini, Groq or Anthropic). With an ElevenLabs key, Blecky's replies are sent to
-ElevenLabs to be spoken. The Kokoro voice runs entirely on the phone.
+speech recognizer (usually Google). With the on-phone brain, nothing else leaves the phone except the
+free lookups (news, Wikipedia, weather) for questions that need them. If you add online AI keys, your
+messages go to that provider. Her voice always runs on the phone.

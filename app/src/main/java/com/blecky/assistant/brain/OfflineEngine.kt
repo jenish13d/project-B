@@ -60,6 +60,14 @@ class OfflineEngine(
         conversation = null
     }
 
+    /** Frees the model's memory, e.g. after it failed. */
+    @Synchronized
+    private fun unload() {
+        engine?.close()
+        engine = null
+        loadedModel = null
+    }
+
     override suspend fun ask(text: String, key: String, ctx: ToolContext, fromScheduler: Boolean): String {
         lastTurnFailed = false
         val words = Persona.unstamp(text)
@@ -76,21 +84,34 @@ class OfflineEngine(
             lastTurnFailed = true
             return "I don't have an on-phone brain yet. Download one in Settings, or add a free AI key."
         }
-        return try {
-            currentCtx = ctx
-            lastToolResult = null
-            // Small models parrot a time stamp back, so send just the words.
-            val reply = conversationFor(model).sendMessage(if (fromScheduler) text else words)
-            reply.contents.contents.filterIsInstance<Content.Text>().joinToString(" ") { it.text }
-                .replace(Regex("(?s)<think>.*?</think>"), "")
-                .trim()
-                .ifEmpty { lastToolResult ?: Persona.done() }
-        } catch (e: Exception) {
-            Log.e("Blecky", "On-phone brain failed", e)
-            lastTurnFailed = true
-            reset()
-            "My on-phone brain tripped up. Try again, or pick a smaller model in Settings."
+        // Research step: with internet, fetch fresh facts the small model can't know.
+        val facts = if (!fromScheduler && WebLookup.isOnline(context)) WebLookup.lookup(words, ctx) else null
+        // Small models parrot a time stamp back, so send just the words.
+        val prompt = when {
+            fromScheduler -> text
+            facts != null -> "$words\n\n(Fresh from the internet. Use it to answer in a sentence or two; " +
+                "don't read it all out or mention searching unless asked:\n$facts)"
+            else -> words
         }
+        // Several downloaded models act as backups for each other.
+        val candidates = listOf(model) + models.installed().filter { it.id != model.id }.sortedByDescending { it.sizeMb }
+        for (candidate in candidates.take(2)) {
+            try {
+                currentCtx = ctx
+                lastToolResult = null
+                val reply = conversationFor(candidate).sendMessage(prompt)
+                return reply.contents.contents.filterIsInstance<Content.Text>().joinToString(" ") { it.text }
+                    .replace(Regex("(?s)<think>.*?</think>"), "")
+                    .trim()
+                    .ifEmpty { lastToolResult ?: Persona.done() }
+            } catch (e: Exception) {
+                Log.e("Blecky", "On-phone model ${candidate.id} failed", e)
+                reset()
+                unload()
+            }
+        }
+        lastTurnFailed = true
+        return "My on-phone brain tripped up. Try again, or pick a smaller model in Settings."
     }
 
     /** Runs a recognised everyday command; its result is the reply. */
@@ -138,7 +159,8 @@ class OfflineEngine(
         val memories = Memory.store(context).load().takeLast(8).joinToString("; ") { it.getString("text") }
         val name = settings.userName.ifBlank { "unknown" }
         return """
-            You are Blecky, the user's warm, witty AI friend, like JARVIS or FRIDAY, running offline on their phone.
+            You are Blecky, the user's warm, witty AI friend, like JARVIS or FRIDAY, running on their phone.
+            Today is ${java.time.LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE d MMMM yyyy"))}.
             Talk like a close friend: one or two short spoken sentences, no lists, emojis or markdown.
             Answer in the language and script of the user's most recent message only: Hindi in Devanagari,
             Gujarati in Gujarati script, English in English. Don't repeat yourself.

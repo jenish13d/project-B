@@ -32,7 +32,6 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     private val pending = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
     private lateinit var tts: TextToSpeech
     val neural = NeuralVoices(context)
-    private val elevenLabs = ElevenLabsVoice()
 
     @Volatile
     private var interrupted = false
@@ -97,7 +96,6 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
 
     /** The voice Blecky speaks with now, for the settings screen. */
     fun currentVoiceName(): String = when {
-        settings.elevenLabsKey.isNotBlank() -> "ElevenLabs (cloud)"
         neuralPack() != null -> neuralPack()!!.label
         else -> "Phone voice (basic)"
     }
@@ -122,8 +120,8 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
     }
 
     /**
-     * Speaks [text] and returns once it has finished. Uses the most natural voice available:
-     * ElevenLabs if the user added a key, then the offline Kokoro voice, then the phone's own.
+     * Speaks [text] and returns once it has finished, with the chosen offline neural voice, or the
+     * phone's own voice for Gujarati and when none is downloaded.
      */
     suspend fun speak(text: String) {
         val spoken = SpeechText.clean(text)
@@ -134,19 +132,16 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
         try {
             withContext(Dispatchers.IO) {
                 val script = SpeechText.script(spoken)
-                // ElevenLabs reads English and Hindi; Gujarati goes to the phone's Google voice.
-                if (script != SpeechText.Script.GUJARATI && settings.elevenLabsKey.isNotBlank() &&
-                    tryVoice { elevenLabs.speak(settings.elevenLabsKey, settings.elevenLabsVoice, spoken) }
-                ) {
-                    return@withContext
-                }
-                if (interrupted) return@withContext
                 val pack = when (script) {
                     SpeechText.Script.LATIN -> neuralPack()
-                    SpeechText.Script.DEVANAGARI -> neural.installed().firstOrNull { it.language == "hi" }
+                    // Keep her own voice for Hindi when it can speak it, else a Hindi voice.
+                    SpeechText.Script.DEVANAGARI -> neuralPack()?.takeIf { it.speaksHindi }
+                        ?: neural.installed().firstOrNull { it.speaksHindi }
+                        ?: neural.installed().firstOrNull { it.language == "hi" }
                     SpeechText.Script.GUJARATI -> null
                 }
-                if (pack != null && tryVoice { neural.speak(spoken, pack) }) return@withContext
+                val language = if (script == SpeechText.Script.DEVANAGARI) "hi" else "en"
+                if (pack != null && tryVoice { neural.speak(spoken, pack, language = language) }) return@withContext
                 if (!interrupted) {
                     speakWithPhoneVoice(
                         spoken,
@@ -197,7 +192,6 @@ class VoiceIO(private val context: Context, private val settings: Settings) {
 
     fun stopSpeaking() {
         interrupted = true
-        elevenLabs.stop()
         neural.stop()
         tts.stop()
     }

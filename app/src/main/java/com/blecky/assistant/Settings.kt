@@ -105,17 +105,8 @@ class Settings(context: Context) {
 
     /** Chosen offline neural voice (see NeuralVoices.PACKS). */
     var voicePack: String
-        get() = prefs.getString("voice_pack", "jenny") ?: "jenny"
+        get() = prefs.getString("voice_pack", "st-f2") ?: "st-f2"
         set(value) = prefs.edit().putString("voice_pack", value).apply()
-
-    /** Optional ElevenLabs key for the most lifelike cloud voice. */
-    var elevenLabsKey: String
-        get() = prefs.getString("eleven_key", "") ?: ""
-        set(value) = prefs.edit().putString("eleven_key", value.trim()).apply()
-
-    var elevenLabsVoice: String
-        get() = prefs.getString("eleven_voice", "") ?: ""
-        set(value) = prefs.edit().putString("eleven_voice", value.trim()).apply()
 
     /** How long Blecky keeps listening for a follow-up before going back to waiting for her name. */
     var followUpSeconds: Int

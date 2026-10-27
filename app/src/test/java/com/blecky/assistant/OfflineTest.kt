@@ -5,6 +5,8 @@ import com.blecky.assistant.brain.LocalCommands.Command
 import com.blecky.assistant.brain.OfflineEngine
 import com.blecky.assistant.brain.OfflineModels
 import com.blecky.assistant.brain.Persona
+import com.blecky.assistant.brain.WebLookup
+import com.blecky.assistant.voice.NeuralVoices
 import com.blecky.assistant.tools.InnerLife
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,5 +75,35 @@ class OfflineTest {
         assertEquals("make_call", OfflineEngine.offlineName("call"))
         assertEquals("set_timer", OfflineEngine.offlineName("set_timer"))
         assertEquals("call Jash", Persona.unstamp(Persona.userMessage("call Jash", fromScheduler = false)))
+    }
+
+    @Test
+    fun `research step looks up only what needs fresh facts`() {
+        assertEquals(WebLookup.Need.WEATHER, WebLookup.need("Will it rain tomorrow?"))
+        assertEquals(WebLookup.Need.WEATHER, WebLookup.need("aaj mausam kaisa hai"))
+        assertEquals(WebLookup.Need.WEATHER, WebLookup.need("કાલે વરસાદ પડશે?"))
+        assertEquals(WebLookup.Need.SEARCH, WebLookup.need("What's the latest India cricket news?"))
+        assertEquals(WebLookup.Need.SEARCH, WebLookup.need("who won the match yesterday"))
+        assertEquals(WebLookup.Need.SEARCH, WebLookup.need("petrol price kitna hai"))
+        listOf("how are you", "what's up", "what is your name", "tell me a joke", "I'm sad today", "what's my sister's name").forEach {
+            assertEquals(it, WebLookup.Need.NONE, WebLookup.need(it))
+        }
+    }
+
+    @Test
+    fun `weather city comes from the question or from memory`() {
+        assertEquals("Mumbai", WebLookup.city("weather in Mumbai today?", emptyList()))
+        assertEquals("Ahmedabad", WebLookup.city("will it rain tomorrow", listOf("Loves cricket", "Lives in Ahmedabad")))
+        assertNull(WebLookup.city("will it rain tomorrow", listOf("Loves cricket")))
+        assertEquals("latest India cricket news", WebLookup.query("Hey Blecky, tell me latest India cricket news?"))
+    }
+
+    @Test
+    fun `default voice is a female supertonic voice that also speaks hindi`() {
+        val supertonic = NeuralVoices.PACKS.filter { it.kind == NeuralVoices.Kind.SUPERTONIC }
+        assertEquals(5, supertonic.size)
+        // Measured pitch: speakers 0-4 are female (180-245 Hz), 5-9 male.
+        assertTrue(supertonic.all { it.speakerId in 0..4 && it.speaksHindi })
+        assertEquals(NeuralVoices.Kind.SUPERTONIC, NeuralVoices.PACKS.first().kind)
     }
 }
