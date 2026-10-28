@@ -1,10 +1,13 @@
 package com.blecky.assistant
 
 import com.blecky.assistant.updates.Diagnostics
+import com.blecky.assistant.updates.LiveLink
 import com.blecky.assistant.updates.Updater
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.json.JSONObject
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.net.URLDecoder
 
@@ -42,5 +45,13 @@ class UpdatesTest {
         assertTrue(public.contains("service running"))
         assertFalse(public.contains("warnings"))
         assertFalse(public.contains("crash", ignoreCase = true))
+    }
+
+    @Test
+    fun `settles on the oldest open status issue`() {
+        fun issue(number: Int, title: String = LiveLink.STATUS_TITLE) = JSONObject().put("number", number).put("title", title)
+        val open = listOf(issue(3), issue(5, "Something else"), issue(1), issue(2).put("pull_request", JSONObject()), issue(4))
+        assertEquals(1, LiveLink.pickStatusIssue(open))
+        assertNull(LiveLink.pickStatusIssue(listOf(issue(7, "Other"))))
     }
 }

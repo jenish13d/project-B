@@ -117,17 +117,22 @@ object LiveLink {
         "Updated **${stamp()}** by Blecky ${BuildConfig.VERSION_NAME}. Claude reads this to check on her.\n\n" +
             Diagnostics.format(Diagnostics.status(context), crash = null, logs = "")
 
+    /** Synchronized so check-ins and events starting together don't each create an issue. */
+    @Synchronized
     private fun statusIssue(context: Context): Int {
         val p = prefs(context)
         p.getInt("status_issue", 0).takeIf { it > 0 }?.let { return it }
         val open = JSONArray(request(context, "GET", "$API/issues?state=open&per_page=100", null))
-        val existing = (0 until open.length()).map { open.getJSONObject(it) }
-            .firstOrNull { it.optString("title") == STATUS_TITLE && !it.has("pull_request") }
-        val number = existing?.getInt("number")
+        val existing = pickStatusIssue((0 until open.length()).map { open.getJSONObject(it) })
+        val number = existing
             ?: JSONObject(request(context, "POST", "$API/issues", JSONObject().put("title", STATUS_TITLE).put("body", "Starting up…"))).getInt("number")
         p.edit().putInt("status_issue", number).apply()
         return number
     }
+
+    /** The oldest open status issue, so every check-in settles on the same one. */
+    fun pickStatusIssue(issues: List<JSONObject>): Int? =
+        issues.filter { it.optString("title") == STATUS_TITLE && !it.has("pull_request") }.minOfOrNull { it.getInt("number") }
 
     private fun comment(context: Context, issue: Int, text: String) {
         request(context, "POST", "$API/issues/$issue/comments", JSONObject().put("body", text))
